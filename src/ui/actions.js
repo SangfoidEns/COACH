@@ -318,7 +318,7 @@ const Actions = {
   newPlayer() {
     Modal.open('Новий гравець', `
       <div class="fg">
-        <div class="fgr"><label>Ім'я</label><input id="plF"></div>
+        <div class="fgr"><label>Ім\'я</label><input id="plF"></div>
         <div class="fgr"><label>Прізвище</label><input id="plL"></div>
         <div class="fgr"><label>Номер</label><input type="number" id="plN" min="1" max="99"></div>
         <div class="fgr"><label>Позиція</label><select id="plP">${['GK','CB','LB','RB','DM','CM','AM','LW','RW','ST'].map(p=>`<option>${p}</option>`).join('')}</select></div>
@@ -364,7 +364,7 @@ const Actions = {
     if (!p) return;
     Modal.open('Редагування гравця', `
       <div class="fg">
-        <div class="fgr"><label>Ім'я</label><input id="peF" value="${sanitize(p.firstName)}"></div>
+        <div class="fgr"><label>Ім\'я</label><input id="peF" value="${sanitize(p.firstName)}"></div>
         <div class="fgr"><label>Прізвище</label><input id="peL" value="${sanitize(p.lastName)}"></div>
         <div class="fgr"><label>Номер</label><input type="number" id="peN" value="${p.number}"></div>
         <div class="fgr"><label>Позиція</label><select id="peP">${['GK','CB','LB','RB','DM','CM','AM','LW','RW','ST'].map(pos=>`<option ${p.position===pos?'selected':''}>${pos}</option>`).join('')}</select></div>
@@ -426,7 +426,7 @@ const Actions = {
         <div class="fgr"><label>Зона</label><input id="exA" value="Половина"></div>
         <div class="fgr"><label>Тривалість</label><input type="number" id="exDu" value="15"></div>
         <div class="fgr"><label>RPE</label><input type="number" id="exI" value="6" min="1" max="10"></div>
-        <div class="fgr full"><label>Інвентар</label><input id="exE" value="м'ячі, фішки"></div>
+        <div class="fgr full"><label>Інвентар</label><input id="exE" value="м\'ячі, фішки"></div>
         <div class="fgr full"><label>Інструкції</label><textarea id="exIn"></textarea></div>
         <div class="fgr full"><label>Coaching Points</label><textarea id="exCp"></textarea></div>
       </div>`, [
@@ -624,5 +624,12 @@ const Actions = {
 /* ─── BOOT ──────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', () => {
   try { App.init(); }
-  catch (e) { ErrorManager.log('init', e); document.body.innerHTML = '<p style="padding:40px;color:#e74c3c">Критична помилка ініціалізації. Очистіть localStorage і перезавантажте.</p>'; }
+  catch (e) { ErrorManager.log('init', e); console.error(e);
+    document.body.innerHTML = '<div style="padding:40px;max-width:480px;margin:40px auto;font-family:system-ui,sans-serif">' +
+      '<h2 style="color:#e74c3c">Помилка запуску</h2>' +
+      '<p style="color:#e6edf3">Не вдалося ініціалізувати застосунок.</p>' +
+      '<pre style="background:#161b22;padding:12px;border-radius:8px;color:#f85149;overflow:auto;font-size:12px">' +
+      (e && (e.message || String(e))) + '</pre>' +
+      '<button onclick="localStorage.clear();location.reload()" style="margin-top:16px;padding:10px 16px;background:#c8a84b;border:0;border-radius:8px;font-weight:700;cursor:pointer">' +
+      'Очистити дані і перезавантажити</button></div>'; }
 });

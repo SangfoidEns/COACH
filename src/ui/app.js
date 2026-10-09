@@ -1,22 +1,28 @@
 /** Extracted module: src/ui/app.js lines 2014-2394 — DO NOT rewrite business logic */
 const App = {
   init() {
-    TelegramManager.init();
-    StorageManager.init();
-    this.applyBranding();
+    try { TelegramManager.init(); } catch (e) { console.warn('Telegram', e); }
+    try { StorageManager.init(); } catch (e) {
+      console.error('Storage init failed', e);
+      try { localStorage.removeItem(STORAGE_KEY); localStorage.removeItem(BACKUP_KEY); } catch (_) {}
+      try { StorageManager.init(); } catch (e2) { console.error(e2); }
+    }
+    try { this.applyBranding(); } catch (e) { console.warn('branding', e); }
     this.bindEvents();
-    this.initFloatingNav();
-    BoardEngine.init();
-    this.navigate(Store.get().ui.view || 'dashboard');
+    try { this.initFloatingNav(); } catch (e) { console.warn('nav', e); }
+    try { BoardEngine.init(); } catch (e) { console.warn('board', e); }
+    const view = (Store.get().ui && Store.get().ui.view) || 'dashboard';
+    this.navigate(view);
     this.updateClock();
     setInterval(() => this.updateClock(), 1000);
-    // init board history
-    const b = Store.get().activeBoard;
-    if (!b.history.length) {
-      b.history = [JSON.stringify(b.objects)];
-      b.historyIdx = 0;
-    }
-    Toast.show('МЕТАЛІСТ ШТУТГАРТ — тренерська платформа', 'ok');
+    try {
+      const b = Store.get().activeBoard;
+      if (b && (!b.history || !b.history.length)) {
+        b.history = [JSON.stringify(b.objects || [])];
+        b.historyIdx = 0;
+      }
+    } catch (_) {}
+    try { Toast.show('МЕТАЛІСТ ШТУТГАРТ — тренерська платформа', 'ok'); } catch (_) {}
   },
 
   applyBranding() {

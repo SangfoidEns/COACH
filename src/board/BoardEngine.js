@@ -720,7 +720,7 @@ const BoardEngine = {
       el.addEventListener('dblclick', () => {
         const obj = s.activeBoard.objects.find(o => o.id === el.dataset.id);
         if (!obj) return;
-        Modal.prompt("Ім'я / номер", obj.label || String(obj.number || ''), v => {
+        Modal.prompt("Ім\'я / номер", obj.label || String(obj.number || ''), v => {
           if (v !== null) {
             obj.label = v;
             if (!isNaN(+v)) obj.number = +v;
@@ -833,7 +833,7 @@ const BoardEngine = {
         <button class="tb ${tool==='select'?'on':''}" data-tool="select" title="Вибір">↖</button>
         <button class="tb ${tool==='player'?'on':''}" data-tool="player" title="Гравець">●</button>
         <button class="tb ${tool==='opponent'?'on':''}" data-tool="opponent" title="Суперник">○</button>
-        <button class="tb ${tool==='ball'?'on':''}" data-tool="ball" title="М'яч">⚽</button>
+        <button class="tb ${tool==='ball'?'on':''}" data-tool="ball" title="М\'яч">⚽</button>
       </div>
       <div class="tg">
         <button class="tb ${tool==='pass'?'on':''}" data-tool="pass" title="Передача">⇒</button>
