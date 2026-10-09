@@ -101,6 +101,72 @@ const App = {
     window.addEventListener('pointercancel', onUp);
   },
 
+
+  /** Перетягування панелі інструментів дошки (не малює на canvas) */
+  initBoardToolbarDrag() {
+    const tb = document.getElementById('boardToolbar');
+    if (!tb || tb.dataset.dragBound) return;
+    tb.dataset.dragBound = '1';
+    let dragging = false, ox = 0, oy = 0;
+    const handle = document.createElement('div');
+    handle.className = 'btb-drag-handle';
+    handle.title = 'Перетягніть панель';
+    handle.innerHTML = '⋮⋮';
+    tb.insertBefore(handle, tb.firstChild);
+    const onDown = (e) => {
+      if (e.target.closest('button, select, input')) return;
+      dragging = true;
+      const r = tb.getBoundingClientRect();
+      ox = (e.clientX != null ? e.clientX : 0) - r.left;
+      oy = (e.clientY != null ? e.clientY : 0) - r.top;
+      tb.classList.add('btb-dragging');
+      try { handle.setPointerCapture(e.pointerId); } catch (_) {}
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    const onMove = (e) => {
+      if (!dragging) return;
+      e.preventDefault();
+      e.stopPropagation();
+      let left = e.clientX - ox;
+      let top = e.clientY - oy;
+      const maxL = window.innerWidth - tb.offsetWidth - 4;
+      const maxT = window.innerHeight - tb.offsetHeight - 4;
+      left = Math.max(4, Math.min(maxL, left));
+      top = Math.max(4, Math.min(maxT, top));
+      tb.style.left = left + 'px';
+      tb.style.top = top + 'px';
+      tb.style.right = 'auto';
+      tb.style.bottom = 'auto';
+      tb.style.transform = 'none';
+    };
+    const onUp = () => {
+      if (!dragging) return;
+      dragging = false;
+      tb.classList.remove('btb-dragging');
+      try {
+        localStorage.setItem('ms_btb_pos', JSON.stringify({
+          left: parseFloat(tb.style.left) || 0,
+          top: parseFloat(tb.style.top) || 0
+        }));
+      } catch (_) {}
+    };
+    try {
+      const pos = JSON.parse(localStorage.getItem('ms_btb_pos') || 'null');
+      if (pos && typeof pos.left === 'number') {
+        tb.style.left = pos.left + 'px';
+        tb.style.top = pos.top + 'px';
+        tb.style.transform = 'none';
+        tb.style.right = 'auto';
+        tb.style.bottom = 'auto';
+      }
+    } catch (_) {}
+    handle.addEventListener('pointerdown', onDown);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+  },
+
   navigate(view) {
     Store.get().ui.view = view;
     document.querySelectorAll('.view').forEach(v => v.classList.remove('on'));
@@ -111,11 +177,14 @@ const App = {
     if (view === 'board') {
       document.body.classList.add('board-workspace', 'mode-board-focus');
       document.body.classList.remove('bw-props', 'bw-tools-collapsed', 'bw-nav-hide');
+      try { TelegramManager.showBackButton(); } catch (_) {}
+      try { TelegramManager.haptic('light'); } catch (_) {}
     } else {
       document.body.classList.remove(
         'board-workspace', 'mode-board-focus', 'board-only-mode', 'board-fs-nav',
         'bw-nav', 'bw-props', 'bw-tools-collapsed', 'bw-nav-hide'
       );
+      try { TelegramManager.hideBackButton(); } catch (_) {}
     }
     this.renderCurrent();
     // field needs resize after layout change
@@ -166,6 +235,7 @@ const App = {
     if (view === 'board') {
       BoardEngine.renderToolbar();
       BoardEngine.render();
+      this.initBoardToolbarDrag();
       return;
     }
     const el = document.getElementById('v-' + view);

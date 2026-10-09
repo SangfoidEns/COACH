@@ -1141,3 +1141,45 @@ body.mode-board-focus #playersLayer .eq {
   background: rgba(231, 76, 60, 0.4) !important;
   box-shadow: 0 0 14px rgba(231, 76, 60, 0.35) !important;
 }
+
+
+/* ═══ Liquid Glass — глобально ═══ */
+.tg-mini-app,
+.tg-mini-app .app {
+  height: var(--tg-viewport-stable, 100dvh);
+  max-height: var(--tg-viewport-stable, 100dvh);
+}
+.card, .md, .to, .sidebar, .header, .rp, .ht-block {
+  background: rgba(15, 23, 42, 0.70) !important;
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  transform: translateZ(0);
+}
+.btb-drag-handle {
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+  padding: 4px 8px;
+  margin-right: 4px;
+  border-radius: 8px;
+  color: rgba(255,255,255,0.45);
+  font-size: 12px;
+  letter-spacing: -2px;
+  align-self: center;
+  flex-shrink: 0;
+}
+.btb-drag-handle:active,
+.btb-dragging .btb-drag-handle { cursor: grabbing; color: var(--club-accent); }
+#boardToolbar.btb-dragging {
+  opacity: 0.92;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.55) !important;
+}
+body.mode-board-focus #boardToolbar.btb {
+  /* позиція може бути змінена drag — не форсувати left:50% якщо є inline left */
+}
+body.mode-board-focus #boardToolbar.btb:not([style*="left"]) {
+  left: 50%;
+  transform: translateX(-50%);
+}

@@ -242,6 +242,7 @@ const BoardEngine = {
           y: world.y - obj.y
         };
         try { target.setPointerCapture(e.pointerId); } catch (_) {}
+        try { TelegramManager.haptic('light'); } catch (_) {}
         target.classList.add('dragging');
         // Visual select only — NO full app rerender, NO save
         this.renderTokens();
