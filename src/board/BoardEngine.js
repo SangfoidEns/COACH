@@ -92,10 +92,20 @@ const BoardEngine = {
 
   /** Вписати поле в доступну область main */
   fitField() {
-    this.fitField();
+    this.camera = { x: 0, y: 0, zoom: 1 };
+    this.applyCamera();
     this.renderTokens();
     this.renderDrawings();
   },
+  zoomFit() { this.fitField(); },
+  resetCamera() { this.fitField(); },
+  setZoom(z) {
+    this.camera.zoom = Math.max(0.4, Math.min(5, Number(z) || 1));
+    this.applyCamera();
+    this.renderTokens();
+  },
+  zoomIn() { this.setZoom((this.camera.zoom || 1) * 1.15); },
+  zoomOut() { this.setZoom((this.camera.zoom || 1) / 1.15); },
 
   /* ── History ── */
   getState() {

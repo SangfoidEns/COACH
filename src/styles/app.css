@@ -944,93 +944,84 @@ body.board-fs-nav .sidebar .nav .nl {
 }
 
 
-/* ═══ Панель дошки — Liquid Glass ═══ */
-.view-board .btb,
-.board-workspace .btb {
+
+
+
+/* ═══ ТІЛЬКИ панель керування ДОШКОЮ (не головна навігація) — Liquid Glass ═══ */
+#boardToolbar.btb,
+.view-board > .btb {
   position: sticky;
-  top: 0;
-  z-index: 40;
+  top: 6px;
+  z-index: 50;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
+  margin: 6px 10px 4px;
   padding: 8px 10px;
-  margin: 8px 10px 0;
   border-radius: 16px;
-  border: 1px solid rgba(255,255,255,0.12);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   background: linear-gradient(
-    135deg,
-    rgba(22, 28, 40, 0.72) 0%,
-    rgba(30, 40, 58, 0.55) 50%,
-    rgba(18, 22, 32, 0.7) 100%
+    145deg,
+    rgba(28, 34, 48, 0.78) 0%,
+    rgba(20, 26, 38, 0.62) 55%,
+    rgba(16, 20, 30, 0.75) 100%
   );
-  backdrop-filter: blur(18px) saturate(1.35);
-  -webkit-backdrop-filter: blur(18px) saturate(1.35);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
   box-shadow:
-    0 8px 32px rgba(0,0,0,0.35),
-    inset 0 1px 0 rgba(255,255,255,0.14),
-    0 0 0 1px rgba(200,168,75,0.08);
+    0 10px 40px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 0 24px rgba(200, 168, 75, 0.06);
 }
-.view-board .btb .tg {
+#boardToolbar .tg {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  padding: 2px 6px;
-  border-right: 1px solid rgba(255,255,255,0.08);
+  padding: 0 6px;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
 }
-.view-board .btb .tg:last-child { border-right: none; }
-.view-board .btb .tb {
+#boardToolbar .tg:last-child { border-right: none; }
+#boardToolbar .tb {
   width: 34px;
   height: 34px;
   border-radius: 10px;
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.1);
-  color: var(--text);
-  transition: background .18s, border-color .18s, box-shadow .18s, transform .12s;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #e6edf3;
+  transition: background 0.18s, border-color 0.18s, box-shadow 0.18s, transform 0.12s;
 }
-.view-board .btb .tb:hover {
-  background: rgba(232,197,71,0.12);
-  border-color: rgba(232,197,71,0.45);
-  box-shadow: 0 0 12px rgba(232,197,71,0.15);
+#boardToolbar .tb:hover {
+  background: rgba(232, 197, 71, 0.14);
+  border-color: rgba(232, 197, 71, 0.5);
+  box-shadow: 0 0 14px rgba(232, 197, 71, 0.2);
 }
-.view-board .btb .tb.on {
-  background: rgba(232,197,71,0.2);
-  border-color: var(--club-accent);
-  color: var(--club-accent);
-  box-shadow: 0 0 14px rgba(232,197,71,0.28);
+#boardToolbar .tb.on {
+  background: rgba(232, 197, 71, 0.22);
+  border-color: #e8c547;
+  color: #e8c547;
+  box-shadow: 0 0 16px rgba(232, 197, 71, 0.3);
 }
-.view-board .btb .tb:active { transform: scale(0.94); }
-.view-board .btb select {
-  background: rgba(0,0,0,0.35) !important;
-  border: 1px solid rgba(255,255,255,0.12) !important;
+#boardToolbar .tb:active { transform: scale(0.94); }
+#boardToolbar select {
+  background: rgba(0, 0, 0, 0.4) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
   border-radius: 8px !important;
-  color: var(--text) !important;
+  color: #e6edf3 !important;
   font-size: 11px !important;
   padding: 4px 6px !important;
 }
-
-/* Fullscreen — плаваюче рідке скло по центру */
-.board-only-mode .btb,
-.board-fs-nav .btb {
+/* Fullscreen дошки — панель плаває по центру зверху */
+.board-only-mode #boardToolbar,
+.board-fs-nav #boardToolbar {
   position: fixed !important;
-  top: 12px !important;
+  top: 14px !important;
   left: 50% !important;
   transform: translateX(-50%) !important;
-  z-index: 10050 !important;
+  z-index: 10060 !important;
   max-width: min(980px, 96vw);
   margin: 0 !important;
-  animation: glassIn .35s ease;
 }
-@keyframes glassIn {
-  from { opacity: 0; transform: translateX(-50%) translateY(-8px); }
-  to { opacity: 1; transform: translateX(-50%) translateY(0); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .board-only-mode .btb { animation: none; }
-  .view-board .btb .tb { transition: none; }
-}
-
-/* zoom indicator glass */
 .zoom-indicator {
   position: absolute;
   right: 12px;
@@ -1040,9 +1031,9 @@ body.board-fs-nav .sidebar .nav .nl {
   border-radius: 8px;
   font-size: 11px;
   font-weight: 700;
-  color: var(--club-accent);
-  background: rgba(22,27,34,0.75);
-  border: 1px solid rgba(255,255,255,0.1);
-  backdrop-filter: blur(10px);
+  color: #e8c547;
+  background: rgba(22, 27, 34, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(12px);
   pointer-events: none;
 }
