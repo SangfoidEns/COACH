@@ -114,6 +114,7 @@ const App = {
     handle.innerHTML = '⋮⋮';
     tb.insertBefore(handle, tb.firstChild);
     const onDown = (e) => {
+      if (tb.classList.contains('btb-locked')) return;
       if (e.target.closest('button, select, input')) return;
       dragging = true;
       const r = tb.getBoundingClientRect();
@@ -152,6 +153,7 @@ const App = {
       } catch (_) {}
     };
     try {
+      if (localStorage.getItem('ms_btb_locked') === '1') tb.classList.add('btb-locked');
       const pos = JSON.parse(localStorage.getItem('ms_btb_pos') || 'null');
       if (pos && typeof pos.left === 'number') {
         tb.style.left = pos.left + 'px';
@@ -159,6 +161,12 @@ const App = {
         tb.style.transform = 'none';
         tb.style.right = 'auto';
         tb.style.bottom = 'auto';
+      } else {
+        /* за замовчуванням — низ по центру, не перекриває поле зверху */
+        tb.style.left = '50%';
+        tb.style.top = 'auto';
+        tb.style.bottom = 'max(16px, env(safe-area-inset-bottom, 0px))';
+        tb.style.transform = 'translateX(-50%)';
       }
     } catch (_) {}
     handle.addEventListener('pointerdown', onDown);
@@ -327,6 +335,16 @@ const App = {
       if (action === 'toggle-props') return App.toggleProps();
       if (action === 'toggle-tools') return App.toggleTools();
       if (action === 'show-all-panels') return App.showAllPanels();
+      if (action === 'lock-toolbar') {
+        const tb = document.getElementById('boardToolbar');
+        if (tb) {
+          tb.classList.toggle('btb-locked');
+          const locked = tb.classList.contains('btb-locked');
+          localStorage.setItem('ms_btb_locked', locked ? '1' : '0');
+          Toast.show(locked ? 'Панель зафіксовано' : 'Панель можна перетягувати', 'ok');
+        }
+        return;
+      }
       if (action === 'exit-board') {
         App.navigate('dashboard');
         return;

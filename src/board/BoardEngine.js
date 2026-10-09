@@ -17,6 +17,23 @@ const BoardEngine = {
 
   /* Camera: world is always 0..1 field; camera applies zoom/pan on viewport */
   camera: { x: 0, y: 0, zoom: 1 },
+  /** Межі газону в нормалізованих координатах (з урахуванням радіуса фішки ~2%) */
+  FIELD_MIN: 0.03,
+  FIELD_MAX: 0.97,
+  clampWorld(x, y) {
+    return {
+      x: clamp(x, this.FIELD_MIN, this.FIELD_MAX),
+      y: clamp(y, this.FIELD_MIN, this.FIELD_MAX)
+    };
+  },
+  clampPan() {
+    const z = this.camera.zoom || 1;
+    // не даємо полю зникнути: pan обмежений
+    const lim = Math.max(0, 0.5 - 0.5 / z) + 0.15;
+    this.camera.x = clamp(this.camera.x || 0, -lim, lim);
+    this.camera.y = clamp(this.camera.y || 0, -lim, lim);
+  },
+
 
   init() {
     const c = document.getElementById('fieldContainer');
@@ -70,7 +87,7 @@ const BoardEngine = {
     // Інверсія camera: stage scale+translate від центру
     const wx = (lx - 0.5) / z + 0.5 + (this.camera.x || 0);
     const wy = (ly - 0.5) / z + 0.5 + (this.camera.y || 0);
-    return { x: clamp(wx, -0.05, 1.05), y: clamp(wy, -0.05, 1.05) };
+    return { x: clamp(wx, -0.02, 1.02), y: clamp(wy, -0.02, 1.02) };
   },
 
   worldToScreenPct(wx, wy) {
@@ -242,7 +259,7 @@ const BoardEngine = {
           y: world.y - obj.y
         };
         try { target.setPointerCapture(e.pointerId); } catch (_) {}
-        try { TelegramManager.haptic('light'); } catch (_) {}
+        try { TelegramManager.haptic('medium'); } catch (_) {}
         target.classList.add('dragging');
         // Visual select only — NO full app rerender, NO save
         this.renderTokens();
@@ -253,9 +270,10 @@ const BoardEngine = {
     // Tool actions
     if (tool === 'player' || tool === 'opponent') {
       const num = s.activeBoard.objects.filter(o => o.type === 'player' || o.type === 'opponent').length + 1;
+      const pp = this.clampWorld(world.x, world.y);
       s.activeBoard.objects.push({
         id: uid(), type: tool === 'opponent' ? 'opponent' : 'player',
-        x: world.x, y: world.y, number: num, label: '',
+        x: pp.x, y: pp.y, number: num, label: '',
         team: tool === 'opponent' ? 'opp' : 'own', playerId: null,
         rotation: 0, locked: false, visible: true
       });
@@ -266,14 +284,16 @@ const BoardEngine = {
 
     if (tool === 'ball') {
       s.activeBoard.objects = s.activeBoard.objects.filter(o => o.type !== 'ball');
-      s.activeBoard.objects.push({ id: uid(), type: 'ball', x: world.x, y: world.y, locked: false, visible: true });
+      const bp = this.clampWorld(world.x, world.y);
+      s.activeBoard.objects.push({ id: uid(), type: 'ball', x: bp.x, y: bp.y, locked: false, visible: true });
       this.pushHistory();
       this.render();
       return;
     }
 
     if (['cone','mannequin','pole','ladder','minigoal','hoop','flag','bib'].includes(tool)) {
-      s.activeBoard.objects.push({ id: uid(), type: tool, x: world.x, y: world.y, rotation: 0, locked: false, visible: true });
+      const ep = this.clampWorld(world.x, world.y);
+      s.activeBoard.objects.push({ id: uid(), type: tool, x: ep.x, y: ep.y, rotation: 0, locked: false, visible: true });
       this.pushHistory();
       this.render();
       return;
@@ -312,7 +332,8 @@ const BoardEngine = {
     if (tool === 'text') {
       Modal.prompt('Текст', '', text => {
         if (text) {
-          s.activeBoard.objects.push({ id: uid(), type: 'text', x: world.x, y: world.y, label: text, locked: false, visible: true });
+          const tp = this.clampWorld(world.x, world.y);
+          s.activeBoard.objects.push({ id: uid(), type: 'text', x: tp.x, y: tp.y, label: text, locked: false, visible: true });
           this.pushHistory();
           this.render();
         }
@@ -367,6 +388,7 @@ const BoardEngine = {
       const dy = (e.clientY - this.panStart.y) / r.height / this.camera.zoom;
       this.camera.x = this.panStart.camX - dx;
       this.camera.y = this.panStart.camY - dy;
+      this.clampPan();
       this.applyCamera();
       this.renderTokens();
       this.renderDrawings();
@@ -376,8 +398,9 @@ const BoardEngine = {
     /* ── DRAG: player follows finger continuously ── */
     if (this.dragObj && (this.activePointerId === null || this.activePointerId === e.pointerId)) {
       const world = this.screenToWorld(e.clientX, e.clientY);
-      this.dragObj.x = clamp(world.x - this.dragOffset.x, -0.02, 1.02);
-      this.dragObj.y = clamp(world.y - this.dragOffset.y, -0.02, 1.02);
+      const pos = this.clampWorld(world.x - this.dragOffset.x, world.y - this.dragOffset.y);
+      this.dragObj.x = pos.x;
+      this.dragObj.y = pos.y;
       // ONLY update token positions — no history, no storage, no other views
       this._updateTokenDOM(this.dragObj);
       return;
@@ -564,8 +587,9 @@ const BoardEngine = {
     const s = Store.get();
     s.activeBoard.objects = s.activeBoard.objects.filter(o => o.type !== 'player' && o.type !== 'opponent');
     scheme.forEach(([num, x, y]) => {
+      const p = this.clampWorld(x, y);
       s.activeBoard.objects.push({
-        id: uid(), type: 'player', x, y, number: num,
+        id: uid(), type: 'player', x: p.x, y: p.y, number: num,
         label: '', team: 'own', playerId: null, rotation: 0, locked: false, visible: true
       });
     });
@@ -697,10 +721,11 @@ const BoardEngine = {
         // синхронний вектор з невеликим розкидом
         const spread = (i - (targets.length - 1) / 2) * 0.012;
         const nx = -vy / len * spread, ny = vx / len * spread;
+        const end = this.clampWorld(m.x + vx + nx, m.y + vy + ny);
         tracks.push({
           kind: 'press', objId: m.id, path: p,
           x0: m.x, y0: m.y,
-          x1: m.x + vx + nx, y1: m.y + vy + ny,
+          x1: end.x, y1: end.y,
           duration: Math.max(500, len * 2600)
         });
       });
@@ -1076,6 +1101,17 @@ const BoardEngine = {
 
   render() {
     const s = Store.get();
+    // Утримати всі об'єкти в межах газону
+    (s.activeBoard.objects || []).forEach(o => {
+      if (typeof o.x === 'number' && typeof o.y === 'number') {
+        const p = this.clampWorld(o.x, o.y);
+        o.x = p.x; o.y = p.y;
+      }
+      if (typeof o.x2 === 'number' && typeof o.y2 === 'number') {
+        o.x2 = clamp(o.x2, 0, 1);
+        o.y2 = clamp(o.y2, 0, 1);
+      }
+    });
     this.applyCamera();
     this.drawField(s.activeBoard.fieldView || 'full');
     this.renderTokens();
@@ -1088,10 +1124,11 @@ const BoardEngine = {
     if (!el) return;
     const tool = Store.get().activeBoard.tool;
     el.innerHTML = `
-      <div class="tg" title="Вихід">
-        <button type="button" class="tb tb-exit" data-action="exit-board" title="Вийти з дошки">✕</button>
+      <div class="tg" title="Вихід і панель">
+        <button type="button" class="tb tb-exit" data-action="exit-board" title="Вихід з дошки">✕</button>
+        <button type="button" class="tb" data-action="lock-toolbar" title="Зафіксувати панель">🔒</button>
         <button type="button" class="tb" data-action="toggle-fullscreen" title="На весь екран">⛶</button>
-        <button type="button" class="tb" data-action="toggle-tools" title="Згорнути інструменти">🧰</button>
+        <button type="button" class="tb" data-action="zoom-fit" title="Вписати поле">⊡</button>
       </div>
       <div class="tg">
         <button class="tb" data-action="toggle-present" title="Режим показу">▶ Показ</button>
