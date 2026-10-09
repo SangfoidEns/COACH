@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#0d1117">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>МЕТАЛІСТ ШТУТГАРТ — Coaching Platform</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="stylesheet" href="./src/styles/app.css">
+</head>
+<body>
+
+<div class="app" id="app">
+<header class="header">
+  <div class="logo-area">
+    <div class="logo-ph" id="clubLogo" aria-label="Логотип клубу">МШ</div>
+    <div class="club-name" id="clubName">МЕТАЛІСТ <span>ШТУТГАРТ</span></div>
+  </div>
+  <div class="hdr-c">
+    <div class="dt" id="clock"><strong>—</strong></div>
+    <div class="dt" id="nextTr">Наступне: <strong>—</strong></div>
+  </div>
+  <div class="hdr-a">
+    <div class="gs">
+      <input type="search" id="gSearch" placeholder="Пошук..." aria-label="Глобальний пошук" autocomplete="off">
+      <div class="gsr" id="gResults"></div>
+    </div>
+    <button class="btn btn-p btn-sm" data-action="new-training" aria-label="Нове тренування">+ Тренування</button>
+    <button class="btn-i" data-action="toggle-rp" aria-label="Панель властивостей">☰</button>
+  </div>
+</header>
+
+<nav class="sidebar" id="sidebar" aria-label="Головна навігація">
+  <div class="nav-sec">Головне</div>
+  <a class="nav on" data-view="dashboard" href="#"><span class="ic">📊</span><span>Dashboard</span></a>
+  <a class="nav" data-view="trainings" href="#"><span class="ic">📋</span><span>Тренування</span></a>
+  <a class="nav" data-view="board" href="#"><span class="ic">⚽</span><span>Дошка</span></a>
+  <a class="nav" data-view="exercises" href="#"><span class="ic">🏋️</span><span>Вправи</span></a>
+  <div class="nav-sec">Тактика</div>
+  <a class="nav" data-view="back3" href="#"><span class="ic">3️⃣</span><span>3 Захисники</span></a>
+  <a class="nav" data-view="tactics" href="#"><span class="ic">📐</span><span>Схеми</span></a>
+  <div class="nav-sec">Команда</div>
+  <a class="nav" data-view="players" href="#"><span class="ic">👥</span><span>Гравці</span></a>
+  <a class="nav" data-view="exercises" href="#"><span class="ic">🏋️</span><span>Вправи</span></a>
+  <a class="nav" data-view="myex" href="#"><span class="ic">⭐</span><span>Мої вправи</span></a>
+  <div class="nav-sec">Планування</div>
+  <a class="nav" data-view="calendar" href="#"><span class="ic">📅</span><span>Календар</span></a>
+  <a class="nav" data-view="diary" href="#"><span class="ic">📓</span><span>Щоденник</span></a>
+  <a class="nav" data-view="matches" href="#"><span class="ic">🏆</span><span>Матчі</span></a>
+  <a class="nav" data-view="analytics" href="#"><span class="ic">📈</span><span>Аналітика</span></a>
+  <a class="nav" data-view="settings" href="#"><span class="ic">⚙️</span><span>Налаштування</span></a>
+  <div class="sb-foot">
+    <button class="btn btn-s btn-sm" style="width:100%" data-action="export"><span>Export JSON</span></button>
+  </div>
+</nav>
+
+<main class="main" id="main" role="main">
+  <div class="view on" id="v-dashboard"></div>
+  <div class="view" id="v-trainings"></div>
+  <div class="view view-board" id="v-board">
+    <div class="btb" id="boardToolbar"></div>
+    <div class="ba" id="boardArea">
+      <div class="fc" id="fieldContainer">
+        <svg class="fs" id="fieldSvg" viewBox="0 0 680 1050" preserveAspectRatio="xMidYMid meet"></svg>
+        <div class="dl"><svg id="drawSvg" viewBox="0 0 680 1050" preserveAspectRatio="xMidYMid meet"></svg></div>
+        <div class="pl" id="playersLayer"></div>
+      </div>
+    </div>
+  </div>
+  <div class="view" id="v-exercises"></div>
+  <div class="view" id="v-players"></div>
+  <div class="view" id="v-tactics"></div>
+  <div class="view" id="v-calendar"></div>
+  <div class="view" id="v-matches"></div>
+  <div class="view" id="v-analytics"></div>
+  <div class="view" id="v-settings"></div>
+  <div class="view" id="v-back3"></div>
+  <div class="view" id="v-myex"></div>
+  <div class="view" id="v-diary"></div>
+</main>
+
+<aside class="rp" id="rightPanel" aria-label="Панель властивостей">
+  <div class="rph">Властивості / Таймер</div>
+  <div class="rpb" id="rpBody">
+    <div class="tp">
+      <div class="tl">ТАЙМЕР ТРЕНУВАННЯ</div>
+      <div class="td" id="timerMain">00:00</div>
+      <div class="tc">
+        <button class="btn btn-ok btn-sm" data-action="timer-start">START</button>
+        <button class="btn btn-s btn-sm" data-action="timer-pause">PAUSE</button>
+        <button class="btn btn-s btn-sm" data-action="timer-reset">RESET</button>
+        <button class="btn btn-s btn-sm" data-action="timer-add" data-sec="30">+30с</button>
+        <button class="btn btn-s btn-sm" data-action="timer-add" data-sec="60">+1хв</button>
+        <button class="btn btn-s btn-sm" data-action="timer-add" data-sec="-30">-30с</button>
+      </div>
+      <div class="tl" style="margin-top:12px">Таймер вправи</div>
+      <div class="td" id="timerEx" style="font-size:26px">00:00</div>
+      <div class="tc">
+        <button class="btn btn-p btn-sm" data-action="extimer-start">START</button>
+        <button class="btn btn-s btn-sm" data-action="extimer-pause">PAUSE</button>
+        <button class="btn btn-s btn-sm" data-action="extimer-reset">RESET</button>
+      </div>
+    </div>
+    <div id="rpContent" style="margin-top:12px"><p style="font-size:12px;color:var(--muted)">Виберіть елемент для редагування.</p></div>
+  </div>
+</aside>
+</div>
+
+<nav class="mn" id="mobileNav" aria-label="Мобільна навігація">
+  <a class="mni on" data-view="dashboard" href="#"><span class="ic">📊</span>Головна</a>
+  <a class="mni" data-view="board" href="#"><span class="ic">⚽</span>Дошка</a>
+  <a class="mni" data-view="trainings" href="#"><span class="ic">📋</span>Трен.</a>
+  <a class="mni" data-view="players" href="#"><span class="ic">👥</span>Склад</a>
+  <a class="mni" data-view="calendar" href="#"><span class="ic">📅</span>Кал.</a>
+</nav>
+
+<div class="mo" id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div class="md">
+    <div class="mh"><h2 id="modalTitle">—</h2><button class="mc" data-action="close-modal" aria-label="Закрити">✕</button></div>
+    <div class="mb" id="modalBody"></div>
+    <div class="mf" id="modalFooter"></div>
+  </div>
+</div>
+
+<button class="fs-exit-btn" id="fsExitBtn" data-action="exit-fullscreen" aria-label="Вийти з повноекранного режиму">✕ EXIT BOARD</button>
+<div class="tc2" id="toasts" aria-live="polite"></div>
+
+
+  <script src="./src/core/utils.js"></script>
+  <script src="./src/telegram/TelegramManager.js"></script>
+  <script src="./src/core/toast.js"></script>
+  <script src="./src/data/demo.js"></script>
+  <script src="./src/data/schemes.js"></script>
+  <script src="./src/core/store.js"></script>
+  <script src="./src/core/storage.js"></script>
+  <script src="./src/board/TimerEngine.js"></script>
+  <script src="./src/board/BoardEngine.js"></script>
+  <script src="./src/core/modal.js"></script>
+  <script src="./src/core/loadModel.js"></script>
+  <script src="./src/ui/views.js"></script>
+  <script src="./src/ui/ai.js"></script>
+  <script src="./src/ui/app.js"></script>
+  <script src="./src/ui/actions.js"></script>
+</body>
+</html>
