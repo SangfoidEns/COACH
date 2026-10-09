@@ -32,7 +32,7 @@ const BoardEngine = {
     c.addEventListener('contextmenu', e => e.preventDefault());
     // Resize
     if (window.ResizeObserver) {
-      new ResizeObserver(() => this.renderTokens()).observe(c);
+      new ResizeObserver(() => { this.applyCamera(); this.renderTokens(); this.renderDrawings(); }).observe(c);
     }
     // Space for pan
     document.addEventListener('keydown', e => {
@@ -72,20 +72,29 @@ const BoardEngine = {
     return { left: (wx ?? 0) * 100, top: (wy ?? 0) * 100 };
   },
 
-  /** Масштаб і зсув усього поля (розмітка + фішки разом) */
+  /** Масштаб і зсув усього поля (розмітка + фішки + стрілки разом) */
   applyCamera() {
     const stage = document.getElementById('fieldStage');
     const c = document.getElementById('fieldContainer');
     if (!stage || !c) return;
-    const z = this.camera.zoom || 1;
+    const z = Math.max(0.4, Math.min(5, this.camera.zoom || 1));
+    this.camera.zoom = z;
     const w = c.clientWidth || 1;
     const h = c.clientHeight || 1;
-    // camera.x/y — зсув у світових одиницях 0..1
-    const tx = -this.camera.x * w;
-    const ty = -this.camera.y * h;
+    // pan у світових одиницях → пікселі відносно центру контейнера
+    const tx = -this.camera.x * w * z;
+    const ty = -this.camera.y * h * z;
     stage.style.transformOrigin = '50% 50%';
-    stage.style.transform = `translate(${tx * z}px, ${ty * z}px) scale(${z})`;
+    stage.style.willChange = 'transform';
+    stage.style.transform = `translate3d(${tx}px, ${ty}px, 0) scale(${z})`;
     this.updateZoomIndicator();
+  },
+
+  /** Вписати поле в доступну область main */
+  fitField() {
+    this.fitField();
+    this.renderTokens();
+    this.renderDrawings();
   },
 
   /* ── History ── */
@@ -575,51 +584,277 @@ const BoardEngine = {
     Toast.show('Завантажено: ' + b.name, 'ok');
   },
 
-  /* Animation */
+  /* ═══ Анімація фішок уздовж стрілок / рухів ═══ */
+  _animTracks: [],
+  _animStartTs: 0,
+  _animPausedAt: 0,
+  _animElapsed: 0,
+  _animRaf: null,
+
+  _easeInOut(t) {
+    return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+  },
+  _objDist(ox, oy, x, y) {
+    const dx = ox - x, dy = oy - y;
+    return Math.sqrt(dx * dx + dy * dy);
+  },
+  /** Усі рухомі об'єкти на дошці */
+  _movableTypes() {
+    return ['player', 'opponent', 'ball', 'cone', 'mannequin', 'pole', 'ladder', 'minigoal', 'hoop', 'flag', 'bib'];
+  },
+
+  _pointInZone(px, py, z) {
+    if (!z) return false;
+    if (z.type === 'circle' && z.r != null) {
+      const dx = px - z.x, dy = py - z.y;
+      return Math.sqrt(dx * dx + dy * dy) <= z.r;
+    }
+    if (z.type === 'zone' || z.type === 'rect') {
+      const x1 = Math.min(z.x, z.x2 != null ? z.x2 : z.x), x2 = Math.max(z.x, z.x2 != null ? z.x2 : z.x);
+      const y1 = Math.min(z.y, z.y2 != null ? z.y2 : z.y), y2 = Math.max(z.y, z.y2 != null ? z.y2 : z.y);
+      return px >= x1 && px <= x2 && py >= y1 && py <= y2;
+    }
+    if (z.type === 'polygon' && Array.isArray(z.points) && z.points.length >= 3) {
+      // ray casting
+      let inside = false;
+      const pts = z.points;
+      for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+        const xi = pts[i].x, yi = pts[i].y, xj = pts[j].x, yj = pts[j].y;
+        const inter = ((yi > py) !== (yj > py)) && (px < (xj - xi) * (py - yi) / ((yj - yi) || 1e-9) + xi);
+        if (inter) inside = !inside;
+      }
+      return inside;
+    }
+    return false;
+  },
+
+  /**
+   * Треки анімації:
+   * - будь-яка стрілка (run/dribble/arrow/…) → найближча фішка (не лише м'яч)
+   * - pass/shot → м'яч + опційно пасуючий
+   * - press → усі фішки в зоні біля старту рухаються вектором пресингу
+   */
+  _buildAnimTracks() {
+    const b = Store.get().activeBoard;
+    const pathTypes = ['arrow', 'pass', 'run', 'dribble', 'arrowDash', 'shot', 'press'];
+    const paths = b.objects.filter(o => o.x2 != null && pathTypes.includes(o.type));
+    const movables = b.objects.filter(o => this._movableTypes().includes(o.type));
+    const zones = b.objects.filter(o => ['zone', 'circle', 'polygon', 'rect'].includes(o.type));
+    const tracks = [];
+    const used = new Set();
+
+    const nearest = (x, y, maxD, filterFn) => {
+      let best = null, bestD = maxD;
+      movables.forEach(m => {
+        if (used.has(m.id)) return;
+        if (filterFn && !filterFn(m)) return;
+        const d = this._objDist(m.x, m.y, x, y);
+        if (d < bestD) { bestD = d; best = m; }
+      });
+      return best;
+    };
+
+    // 1) Пресинг — груповий зсув
+    paths.filter(p => p.type === 'press').forEach(p => {
+      const vx = (p.x2 - p.x), vy = (p.y2 - p.y);
+      const len = Math.sqrt(vx * vx + vy * vy) || 0.01;
+      // зона: коло навколо старту або наявна zone, що містить старт
+      let targets = movables.filter(m => {
+        if (m.type === 'ball') return false;
+        return this._objDist(m.x, m.y, p.x, p.y) < 0.14;
+      });
+      zones.forEach(z => {
+        if (this._pointInZone(p.x, p.y, z) || this._objDist(z.x, z.y, p.x, p.y) < 0.2) {
+          movables.forEach(m => {
+            if (m.type === 'ball') return;
+            if (this._pointInZone(m.x, m.y, z) && !targets.includes(m)) targets.push(m);
+          });
+        }
+      });
+      if (!targets.length) {
+        const one = nearest(p.x, p.y, 0.15, m => m.type !== 'ball');
+        if (one) targets = [one];
+      }
+      targets.forEach((m, i) => {
+        used.add(m.id);
+        // синхронний вектор з невеликим розкидом
+        const spread = (i - (targets.length - 1) / 2) * 0.012;
+        const nx = -vy / len * spread, ny = vx / len * spread;
+        tracks.push({
+          kind: 'press', objId: m.id, path: p,
+          x0: m.x, y0: m.y,
+          x1: m.x + vx + nx, y1: m.y + vy + ny,
+          duration: Math.max(500, len * 2600)
+        });
+      });
+    });
+
+    // 2) Рух / ведення / стрілка — будь-яка фішка
+    paths.filter(p => ['run', 'dribble', 'arrow', 'arrowDash'].includes(p.type)).forEach(p => {
+      const m = nearest(p.x, p.y, 0.14, null);
+      if (!m) return;
+      used.add(m.id);
+      const len = this._objDist(p.x, p.y, p.x2, p.y2);
+      tracks.push({
+        kind: 'move', objId: m.id, path: p,
+        x0: m.x, y0: m.y, x1: p.x2, y1: p.y2,
+        duration: Math.max(450, len * 2700)
+      });
+    });
+
+    // 3) Пас / удар — м'яч + короткий рух пасуючого
+    paths.filter(p => p.type === 'pass' || p.type === 'shot').forEach(p => {
+      const ball = movables.find(m => m.type === 'ball' && !used.has(m.id)) || movables.find(m => m.type === 'ball');
+      const len = this._objDist(p.x, p.y, p.x2, p.y2);
+      if (ball) {
+        tracks.push({
+          kind: 'ball', objId: ball.id, path: p,
+          x0: p.x, y0: p.y, x1: p.x2, y1: p.y2,
+          duration: Math.max(350, len * 2000)
+        });
+      }
+      const passer = nearest(p.x, p.y, 0.1, m => m.type === 'player' || m.type === 'opponent');
+      if (passer && p.type === 'pass') {
+        used.add(passer.id);
+        tracks.push({
+          kind: 'move', objId: passer.id, path: p,
+          x0: passer.x, y0: passer.y,
+          x1: passer.x + (p.x2 - p.x) * 0.06,
+          y1: passer.y + (p.y2 - p.y) * 0.06,
+          duration: Math.max(300, len * 800)
+        });
+      }
+    });
+
+    return tracks;
+  },
+
   animPlay() {
     const b = Store.get().activeBoard;
     if (b.anim.playing) return;
-    b.anim.paths = b.objects.filter(o => ['arrow', 'pass', 'run', 'dribble', 'arrowDash', 'shot'].includes(o.type));
+    // зберегти початкові позиції
+    b.objects.forEach(o => { o._ox = o.x; o._oy = o.y; });
+    this._animTracks = this._buildAnimTracks();
+    b.anim.paths = this._animTracks.map(t => t.path);
+    if (!this._animTracks.length) {
+      Toast.show('Немає стрілок руху/передач для анімації. Намалюйте ⇒ ⇢ ∿ ⚡', 'warn');
+      return;
+    }
     b.anim.playing = true;
     b.anim.frame = 0;
-    b.objects.forEach(o => { o._ox = o.x; o._oy = o.y; });
+    this._animElapsed = 0;
+    this._animStartTs = performance.now();
+    this._animPausedAt = 0;
+    // послідовний старт треків зі зсувом
+    let t0 = 0;
+    this._animTracks.forEach((tr, i) => {
+      tr.start = t0;
+      // паралельні групи: run одночасно, pass після
+      if (tr.kind === 'ball') t0 += tr.duration * 0.15;
+      else if (i > 0 && this._animTracks[i - 1].kind === tr.kind) t0 += 80;
+      else t0 += tr.duration * 0.25;
+    });
+    this._animTotal = Math.max(...this._animTracks.map(tr => tr.start + tr.duration), 1000);
+    document.getElementById('playersLayer')?.classList.add('animating');
+    Toast.show('Анімація: ' + this._animTracks.length + ' рухів', 'ok');
     this._animLoop();
   },
+
   _animLoop() {
     const b = Store.get().activeBoard;
     if (!b.anim.playing) return;
-    b.anim.frame += 0.006 * (b.anim.speed || 1);
-    if (b.anim.frame > 1) b.anim.frame = 0;
-    const ball = b.objects.find(o => o.type === 'ball');
-    if (ball && b.anim.paths.length) {
-      const idx = Math.floor(b.anim.frame * b.anim.paths.length) % b.anim.paths.length;
-      const p = b.anim.paths[idx];
-      if (p && p.x2 != null) {
-        const t = (b.anim.frame * b.anim.paths.length) % 1;
-        // ease
-        const te = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
-        ball.x = p.x + (p.x2 - p.x) * te;
-        ball.y = p.y + (p.y2 - p.y) * te;
+    const now = performance.now();
+    const speed = b.anim.speed || 1;
+    const elapsed = (now - this._animStartTs) * speed;
+    this._animElapsed = elapsed;
+    b.anim.frame = Math.min(1, elapsed / this._animTotal);
+
+    this._animTracks.forEach(tr => {
+      const obj = b.objects.find(o => o.id === tr.objId);
+      if (!obj) return;
+      const local = (elapsed - tr.start) / tr.duration;
+      if (local < 0) {
+        obj.x = tr.x0; obj.y = tr.y0;
+        return;
       }
-    }
-    b.objects.filter(o => o.type === 'player' || o.type === 'opponent').forEach((o, i) => {
-      if (o._ox == null) return;
-      o.x = o._ox + Math.sin(b.anim.frame * Math.PI * 2 + i) * 0.006;
-      o.y = o._oy + Math.cos(b.anim.frame * Math.PI * 2 + i * 0.7) * 0.004;
+      if (local >= 1) {
+        obj.x = tr.x1; obj.y = tr.y1;
+        return;
+      }
+      const te = this._easeInOut(local);
+      obj.x = tr.x0 + (tr.x1 - tr.x0) * te;
+      obj.y = tr.y0 + (tr.y1 - tr.y0) * te;
     });
-    this.renderTokens();
-    requestAnimationFrame(() => this._animLoop());
+
+    this._updateTokenPositionsLive();
+    this._updateAnimProgress(b.anim.frame);
+
+    if (elapsed >= this._animTotal) {
+      // цикл
+      this._animStartTs = performance.now();
+      // скинути на старт треків
+      this._animTracks.forEach(tr => {
+        const obj = b.objects.find(o => o.id === tr.objId);
+        if (obj) { obj.x = tr.x0; obj.y = tr.y0; }
+      });
+    }
+    this._animRaf = requestAnimationFrame(() => this._animLoop());
   },
-  animPause() { Store.get().activeBoard.anim.playing = false; },
+
+  /** Оновлення DOM без повного re-render (плавніше) */
+  _updateTokenPositionsLive() {
+    const layer = document.getElementById('playersLayer');
+    if (!layer) return;
+    const b = Store.get().activeBoard;
+    layer.querySelectorAll('[data-id]').forEach(el => {
+      const obj = b.objects.find(o => o.id === el.dataset.id);
+      if (!obj) return;
+      const pct = this.worldToScreenPct(obj.x, obj.y);
+      el.style.left = pct.left + '%';
+      el.style.top = pct.top + '%';
+    });
+  },
+
+  _updateAnimProgress(frame) {
+    let el = document.getElementById('animProgress');
+    if (!el) {
+      const c = document.getElementById('fieldContainer');
+      if (!c) return;
+      el = document.createElement('div');
+      el.id = 'animProgress';
+      el.className = 'anim-progress';
+      c.appendChild(el);
+    }
+    el.style.display = 'block';
+    el.style.width = Math.round(frame * 100) + '%';
+  },
+
+  animPause() {
+    const b = Store.get().activeBoard;
+    if (!b.anim.playing) return;
+    b.anim.playing = false;
+    if (this._animRaf) cancelAnimationFrame(this._animRaf);
+    this._animPausedAt = this._animElapsed;
+    Toast.show('Пауза анімації', 'ok');
+  },
   animStop() {
     const b = Store.get().activeBoard;
     b.anim.playing = false;
+    if (this._animRaf) cancelAnimationFrame(this._animRaf);
+    this._animRaf = null;
     b.objects.forEach(o => {
       if (o._ox != null) { o.x = o._ox; o.y = o._oy; delete o._ox; delete o._oy; }
     });
+    document.getElementById('playersLayer')?.classList.remove('animating');
+    const bar = document.getElementById('animProgress');
+    if (bar) bar.style.display = 'none';
     this.renderTokens();
+    Toast.show('Анімацію зупинено', 'ok');
   },
-  animRestart() { this.animStop(); this.animPlay(); },
+  animRestart() {
+    this.animStop();
+    requestAnimationFrame(() => this.animPlay());
+  },
 
   drawField(view) {
     const svg = document.getElementById('fieldSvg');

@@ -9,7 +9,7 @@ const App = {
     }
     try { this.applyBranding(); } catch (e) { console.warn('branding', e); }
     this.bindEvents();
-    try { this.initFloatingNav(); } catch (e) { console.warn('nav', e); }
+    try { /* плаваюча навігація вимкнена — статичний сайдбар справа */ } catch (e) { console.warn('nav', e); }
     try { BoardEngine.init(); } catch (e) { console.warn('board', e); }
     const view = (Store.get().ui && Store.get().ui.view) || 'dashboard';
     this.navigate(view);
@@ -110,8 +110,7 @@ const App = {
     // Canvas-first workspace on board
     if (view === 'board') {
       document.body.classList.add('board-workspace');
-      // default: hide nav & props, keep tools
-      document.body.classList.remove('bw-nav', 'bw-props', 'bw-tools-collapsed');
+      document.body.classList.remove('bw-props', 'bw-tools-collapsed');
     } else {
       document.body.classList.remove('board-workspace', 'bw-nav', 'bw-props', 'bw-tools-collapsed');
     }
@@ -137,12 +136,12 @@ const App = {
     const on = (sel, cond) => {
       document.querySelectorAll(sel).forEach(b => b.classList.toggle('on', !!cond));
     };
-    on('[data-action="toggle-nav"]', document.body.classList.contains('bw-nav'));
+    on('[data-action="toggle-nav"]', !document.body.classList.contains('bw-nav-hide'));
     on('[data-action="toggle-props"]', document.body.classList.contains('bw-props'));
     on('[data-action="toggle-tools"]', document.body.classList.contains('bw-tools-collapsed'));
   },
   toggleNav() {
-    document.body.classList.toggle('bw-nav');
+    document.body.classList.toggle('bw-nav-hide');
     this._afterPanelToggle();
   },
   toggleProps() {
@@ -259,7 +258,7 @@ const App = {
       if (action === 'exit-fullscreen') return BoardEngine.exitFullscreen();
       if (action === 'zoom-in') return BoardEngine.setZoom(BoardEngine.camera.zoom * 1.2);
       if (action === 'zoom-out') return BoardEngine.setZoom(BoardEngine.camera.zoom / 1.2);
-      if (action === 'zoom-fit') return BoardEngine.resetCamera();
+      if (action === 'zoom-fit') return BoardEngine.fitField();
       if (action === 'board-undo') return BoardEngine.undo();
       if (action === 'board-redo') return BoardEngine.redo();
       if (action === 'board-clear') return BoardEngine.clear();
