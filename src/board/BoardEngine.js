@@ -21,6 +21,8 @@ const BoardEngine = {
   init() {
     const c = document.getElementById('fieldContainer');
     if (!c) return;
+    c.style.touchAction = 'none';
+    c.style.userSelect = 'none';
     // Unified Pointer Events — primary interaction path
     c.addEventListener('pointerdown', e => this.onPointerDown(e), { passive: false });
     c.addEventListener('pointermove', e => this.onPointerMove(e), { passive: false });
@@ -132,7 +134,7 @@ const BoardEngine = {
     }
     // Ensure board is visible and sized
     setTimeout(() => this.render(), 100);
-    Toast.show('Board Only Mode — ESC або EXIT для виходу', 'ok');
+    Toast.show('Лише дошка — ESC або ВИХІД', 'ok');
   },
 
   exitFullscreen() {
@@ -183,7 +185,7 @@ const BoardEngine = {
     const world = this.screenToWorld(e.clientX, e.clientY);
     const s = Store.get();
     const tool = s.activeBoard.tool;
-    const target = e.target.closest('.pt, .ball');
+    const target = e.target.closest('.pt, .ball, .eq');
 
     /* ── IMMEDIATE DRAG: touch player → attach now ── */
     if (target && (tool === 'select' || tool === 'player' || tool === 'opponent' || !tool)) {
@@ -228,7 +230,7 @@ const BoardEngine = {
       return;
     }
 
-    if (tool === 'cone' || tool === 'mannequin') {
+    if (['cone','mannequin','pole','ladder','minigoal','hoop','flag','bib'].includes(tool)) {
       s.activeBoard.objects.push({ id: uid(), type: tool, x: world.x, y: world.y, rotation: 0, locked: false, visible: true });
       this.pushHistory();
       this.render();
@@ -633,37 +635,84 @@ const BoardEngine = {
       `<rect x="${W / 2 - 91.5}" y="${H - 75}" width="183" height="55" fill="none" stroke="${L}" stroke-width="2"/>` +
       `<circle cx="${W / 2}" cy="${H - 130}" r="3" fill="${L}"/>` +
       `<rect x="${W / 2 - 36.6}" y="5" width="73.2" height="15" fill="none" stroke="${L}" stroke-width="2"/>` +
-      `<rect x="${W / 2 - 36.6}" y="${H - 20}" width="73.2" height="15" fill="none" stroke="${L}" stroke-width="2"/>`;
+      `<rect x="${W / 2 - 36.6}" y="${H - 20}" width="73.2" height="15" fill="none" stroke="${L}" stroke-width="2"/>` +
+      /* Watermark — background only, no pointer events, not in undo */
+      `<text class="pitch-watermark" x="${W / 2}" y="${H / 2 - 36}" text-anchor="middle" dominant-baseline="auto" ` +
+      `fill="rgba(255,255,255,0.15)" font-family="system-ui,-apple-system,Segoe UI,sans-serif" ` +
+      `font-weight="700" font-size="38" letter-spacing="2" pointer-events="none" style="user-select:none">Metalist Stuttgart</text>`;
+  },
+
+  /** Розмір фішки відносно видимої висоти поля (розмітка ~105м, гравець ~1.7%) */
+  tokenMetrics() {
+    const c = document.getElementById('fieldContainer');
+    const h = (c && c.clientHeight) || 600;
+    const z = (this.camera && this.camera.zoom) || 1;
+    // базовий діаметр гравця ≈ 2.8% висоти поля * zoom
+    const player = Math.max(14, Math.min(52, h * 0.028 * z));
+    const ball = Math.max(8, player * 0.42);
+    const cone = Math.max(10, player * 0.55);
+    const equip = Math.max(12, player * 0.7);
+    return { player, ball, cone, equip, font: Math.max(8, player * 0.32) };
   },
 
   renderTokens() {
     const layer = document.getElementById('playersLayer');
     if (!layer) return;
     const s = Store.get();
+    const m = this.tokenMetrics();
+    layer.style.setProperty('--tok', m.player + 'px');
+    layer.style.setProperty('--tok-font', m.font + 'px');
+    layer.style.setProperty('--ball-sz', m.ball + 'px');
+    const equipTypes = ['cone','mannequin','pole','ladder','minigoal','hoop','flag','bib'];
     const objs = s.activeBoard.objects.filter(o =>
-      o.type === 'player' || o.type === 'opponent' || o.type === 'ball' || o.type === 'cone' || o.type === 'mannequin'
+      o.type === 'player' || o.type === 'opponent' || o.type === 'ball' || equipTypes.includes(o.type)
     );
     const sel = s.activeBoard.selectedId;
-    // Build HTML once
     let html = '';
     objs.forEach(o => {
       const pct = this.worldToScreenPct(o.x, o.y);
+      const L = `left:${pct.left}%;top:${pct.top}%;transform:translate(-50%,-50%);pointer-events:all;cursor:grab;z-index:10;touch-action:none;position:absolute`;
       if (o.type === 'ball') {
-        html += `<div class="ball" data-id="${o.id}" style="left:${pct.left}%;top:${pct.top}%"></div>`;
+        html += `<div class="ball" data-id="${o.id}" style="left:${pct.left}%;top:${pct.top}%;width:${m.ball}px;height:${m.ball}px"></div>`;
         return;
       }
       if (o.type === 'cone') {
-        html += `<div data-id="${o.id}" style="position:absolute;left:${pct.left}%;top:${pct.top}%;transform:translate(-50%,-50%);width:0;height:0;border-left:8px solid transparent;border-right:8px solid transparent;border-bottom:16px solid #e67e22;pointer-events:all;cursor:grab;z-index:10;touch-action:none"></div>`;
+        const bw = m.cone * 0.55, bh = m.cone;
+        html += `<div class="eq cone" data-id="${o.id}" style="${L};width:0;height:0;border-left:${bw}px solid transparent;border-right:${bw}px solid transparent;border-bottom:${bh}px solid #e67e22"></div>`;
         return;
       }
       if (o.type === 'mannequin') {
-        html += `<div data-id="${o.id}" style="position:absolute;left:${pct.left}%;top:${pct.top}%;transform:translate(-50%,-50%);width:18px;height:28px;background:#95a5a6;border-radius:4px 4px 0 0;pointer-events:all;cursor:grab;z-index:10;touch-action:none"></div>`;
+        html += `<div class="eq mannequin" data-id="${o.id}" style="${L};width:${m.equip * 0.55}px;height:${m.equip}px;background:#95a5a6;border-radius:3px 3px 0 0"></div>`;
+        return;
+      }
+      if (o.type === 'pole') {
+        html += `<div class="eq pole" data-id="${o.id}" style="${L};width:${Math.max(4,m.equip*0.12)}px;height:${m.equip*1.2}px;background:#f39c12;border-radius:2px" title="Стійка"></div>`;
+        return;
+      }
+      if (o.type === 'ladder') {
+        html += `<div class="eq ladder" data-id="${o.id}" style="${L};width:${m.equip*1.1}px;height:${m.equip*0.45}px;background:repeating-linear-gradient(90deg,#e74c3c 0 3px,transparent 3px 8px);border:1px solid #c0392b;border-radius:2px" title="Драбинка"></div>`;
+        return;
+      }
+      if (o.type === 'minigoal') {
+        html += `<div class="eq minigoal" data-id="${o.id}" style="${L};width:${m.equip*1.4}px;height:${m.equip*0.9}px;border:2px solid #ecf0f1;border-bottom:none;border-radius:2px 2px 0 0;background:rgba(255,255,255,0.08)" title="Міні-ворота"></div>`;
+        return;
+      }
+      if (o.type === 'hoop') {
+        html += `<div class="eq hoop" data-id="${o.id}" style="${L};width:${m.equip}px;height:${m.equip}px;border:3px solid #9b59b6;border-radius:50%;background:transparent" title="Обруч"></div>`;
+        return;
+      }
+      if (o.type === 'flag') {
+        html += `<div class="eq flag" data-id="${o.id}" style="${L};width:${m.equip*0.15}px;height:${m.equip};background:#27ae60;box-shadow:4px -${m.equip*0.3}px 0 -1px #e74c3c" title="Прапорець"></div>`;
+        return;
+      }
+      if (o.type === 'bib') {
+        html += `<div class="eq bib" data-id="${o.id}" style="${L};width:${m.equip*0.7}px;height:${m.equip*0.55}px;background:#1abc9c;border-radius:4px;opacity:0.85" title="Манішка"></div>`;
         return;
       }
       const isGk = o.number === 1;
       const cls = 'pt ' + (o.team === 'opp' ? 'opp' : (isGk ? 'gk' : 'own')) + (sel === o.id ? ' sel' : '');
       const label = o.label ? `<span class="tn">${sanitize(o.label)}</span>` : '';
-      html += `<div class="${cls}" data-id="${o.id}" style="left:${pct.left}%;top:${pct.top}%" title="${sanitize(o.label || '#' + o.number)}">${o.number || ''}${label}</div>`;
+      html += `<div class="${cls}" data-id="${o.id}" style="left:${pct.left}%;top:${pct.top}%;width:${m.player}px;height:${m.player}px;font-size:${m.font}px" title="${sanitize(o.label || '#' + o.number)}">${o.number || ''}${label}</div>`;
     });
     layer.innerHTML = html;
     // Re-bind dblclick / contextmenu without inline handlers
@@ -769,61 +818,74 @@ const BoardEngine = {
     if (!el) return;
     const tool = Store.get().activeBoard.tool;
     el.innerHTML = `
+      <div class="tg" title="Панелі">
+        <button class="tb" data-action="toggle-nav" title="Навігація">☰</button>
+        <button class="tb" data-action="toggle-tools" title="Панель інструментів">🧰</button>
+        <button class="tb" data-action="toggle-props" title="Властивості">☰│</button>
+        <button class="tb" data-action="show-all-panels" title="Показати всі панелі">▦</button>
+        <button class="tb" data-action="toggle-fullscreen" title="На весь екран">⛶</button>
+      </div>
       <div class="tg">
-        <button class="tb" data-action="toggle-present" title="Presentation mode">▶ Present</button>
+        <button class="tb" data-action="toggle-present" title="Режим показу">▶ Показ</button>
         <button class="tb" data-action="toggle-fullscreen" title="Fullscreen Board">⛶</button>
       </div>
       <div class="tg">
-        <button class="tb ${tool==='select'?'on':''}" data-tool="select" title="Select">↖</button>
-        <button class="tb ${tool==='player'?'on':''}" data-tool="player" title="Player">●</button>
-        <button class="tb ${tool==='opponent'?'on':''}" data-tool="opponent" title="Opponent">○</button>
-        <button class="tb ${tool==='ball'?'on':''}" data-tool="ball" title="Ball">⚽</button>
+        <button class="tb ${tool==='select'?'on':''}" data-tool="select" title="Вибір">↖</button>
+        <button class="tb ${tool==='player'?'on':''}" data-tool="player" title="Гравець">●</button>
+        <button class="tb ${tool==='opponent'?'on':''}" data-tool="opponent" title="Суперник">○</button>
+        <button class="tb ${tool==='ball'?'on':''}" data-tool="ball" title="М'яч">⚽</button>
       </div>
       <div class="tg">
-        <button class="tb ${tool==='pass'?'on':''}" data-tool="pass" title="Pass">⇒</button>
-        <button class="tb ${tool==='run'?'on':''}" data-tool="run" title="Run">⇢</button>
-        <button class="tb ${tool==='dribble'?'on':''}" data-tool="dribble" title="Dribble">∿</button>
-        <button class="tb ${tool==='shot'?'on':''}" data-tool="shot" title="Shot">⚡</button>
-        <button class="tb ${tool==='press'?'on':''}" data-tool="press" title="Press">⬇</button>
-        <button class="tb ${tool==='arrow'?'on':''}" data-tool="arrow" title="Arrow">→</button>
+        <button class="tb ${tool==='pass'?'on':''}" data-tool="pass" title="Передача">⇒</button>
+        <button class="tb ${tool==='run'?'on':''}" data-tool="run" title="Рух">⇢</button>
+        <button class="tb ${tool==='dribble'?'on':''}" data-tool="dribble" title="Ведення">∿</button>
+        <button class="tb ${tool==='shot'?'on':''}" data-tool="shot" title="Удар">⚡</button>
+        <button class="tb ${tool==='press'?'on':''}" data-tool="press" title="Пресинг">⬇</button>
+        <button class="tb ${tool==='arrow'?'on':''}" data-tool="arrow" title="Стрілка">→</button>
       </div>
       <div class="tg">
-        <button class="tb ${tool==='zone'?'on':''}" data-tool="zone" title="Rect Zone">▢</button>
-        <button class="tb ${tool==='circle'?'on':''}" data-tool="circle" title="Circle Zone">○</button>
-        <button class="tb ${tool==='polygon'?'on':''}" data-tool="polygon" title="Polygon Zone">⬠</button>
-        <button class="tb ${tool==='freehand'?'on':''}" data-tool="freehand" title="Freehand Zone">✎</button>
-        <button class="tb ${tool==='cone'?'on':''}" data-tool="cone" title="Cone">△</button>
-        <button class="tb ${tool==='mannequin'?'on':''}" data-tool="mannequin" title="Mannequin">▣</button>
-        <button class="tb ${tool==='text'?'on':''}" data-tool="text" title="Text">T</button>
+        <button class="tb ${tool==='zone'?'on':''}" data-tool="zone" title="Зона (прямокутник)">▢</button>
+        <button class="tb ${tool==='circle'?'on':''}" data-tool="circle" title="Зона (коло)">○</button>
+        <button class="tb ${tool==='polygon'?'on':''}" data-tool="polygon" title="Зона (багатокутник)">⬠</button>
+        <button class="tb ${tool==='freehand'?'on':''}" data-tool="freehand" title="Зона (вільна)">✎</button>
+        <button class="tb ${tool==='cone'?'on':''}" data-tool="cone" title="Фішка (конус)">△</button>
+        <button class="tb ${tool==='mannequin'?'on':''}" data-tool="mannequin" title="Манекен">▣</button>
+        <button class="tb ${tool==='pole'?'on':''}" data-tool="pole" title="Стійка">│</button>
+        <button class="tb ${tool==='ladder'?'on':''}" data-tool="ladder" title="Координаційна драбинка">≡</button>
+        <button class="tb ${tool==='minigoal'?'on':''}" data-tool="minigoal" title="Міні-ворота">⊓</button>
+        <button class="tb ${tool==='hoop'?'on':''}" data-tool="hoop" title="Обруч">◯</button>
+        <button class="tb ${tool==='flag'?'on':''}" data-tool="flag" title="Прапорець кутовий">⚑</button>
+        <button class="tb ${tool==='bib'?'on':''}" data-tool="bib" title="Манішка">▦</button>
+        <button class="tb ${tool==='text'?'on':''}" data-tool="text" title="Текст">T</button>
       </div>
       <div class="tg">
         <select id="fieldViewSel" style="padding:3px 6px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px">
-          <option value="full">Full pitch</option><option value="half">Half</option><option value="third">Attacking third</option><option value="def-third">Defensive third</option><option value="penalty">Penalty area</option>
+          <option value="full">Повне поле</option><option value="half">Half</option><option value="third">Атакувальна третина</option><option value="def-third">Оборонна третина</option><option value="penalty">Штрафний майданчик</option>
           <option value="box">Box</option><option value="own">Own</option><option value="opp">Opp</option>
         </select>
       </div>
       <div class="tg">
         <select id="schemeSel" style="padding:3px 6px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px">
-          <option value="">Formation...</option>
+          <option value="">Формація...</option>
           ${Object.keys(SCHEMES).map(k => `<option value="${k}">${k}</option>`).join('')}
         </select>
       </div>
       <div class="tg">
-        <button class="tb" data-action="zoom-out" title="Zoom −">−</button>
-        <button class="tb" data-action="zoom-fit" title="Fit">⊡</button>
-        <button class="tb" data-action="zoom-in" title="Zoom +">+</button>
+        <button class="tb" data-action="zoom-out" title="Зменшити">−</button>
+        <button class="tb" data-action="zoom-fit" title="Вписати поле">⊡</button>
+        <button class="tb" data-action="zoom-in" title="Збільшити">+</button>
       </div>
       <div class="tg">
-        <button class="tb" data-action="anim-play" title="Play">▶</button>
-        <button class="tb" data-action="anim-pause" title="Pause">⏸</button>
-        <button class="tb" data-action="anim-stop" title="Stop">⏹</button>
-        <input type="range" id="animSpeed" min="0.25" max="2" step="0.25" value="1" style="width:50px" title="Speed">
+        <button class="tb" data-action="anim-play" title="Відтворити">▶</button>
+        <button class="tb" data-action="anim-pause" title="Пауза">⏸</button>
+        <button class="tb" data-action="anim-stop" title="Стоп">⏹</button>
+        <input type="range" id="animSpeed" min="0.25" max="2" step="0.25" value="1" style="width:50px" title="Швидкість">
       </div>
       <div class="tg">
-        <button class="tb" data-action="board-undo" title="Undo">↩</button>
-        <button class="tb" data-action="board-redo" title="Redo">↪</button>
-        <button class="tb" data-action="board-clear" title="Clear">🗑</button>
-        <button class="tb" data-action="board-save" title="Save">💾</button>
+        <button class="tb" data-action="board-undo" title="Скасувати">↩</button>
+        <button class="tb" data-action="board-redo" title="Повторити">↪</button>
+        <button class="tb" data-action="board-clear" title="Очистити">🗑</button>
+        <button class="tb" data-action="board-save" title="Зберегти схему">💾</button>
       </div>`;
     const fv = document.getElementById('fieldViewSel');
     if (fv) {

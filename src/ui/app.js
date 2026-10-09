@@ -5,6 +5,7 @@ const App = {
     StorageManager.init();
     this.applyBranding();
     this.bindEvents();
+    this.initFloatingNav();
     BoardEngine.init();
     this.navigate(Store.get().ui.view || 'dashboard');
     this.updateClock();
@@ -15,7 +16,7 @@ const App = {
       b.history = [JSON.stringify(b.objects)];
       b.historyIdx = 0;
     }
-    Toast.show('МЕТАЛІСТ ШТУТГАРТ Coach Board v2', 'ok');
+    Toast.show('МЕТАЛІСТ ШТУТГАРТ — тренерська платформа', 'ok');
   },
 
   applyBranding() {
@@ -35,13 +36,121 @@ const App = {
       : sanitize(s.clubName);
   },
 
+
+  initFloatingNav() {
+    document.body.classList.add('nav-float');
+    const sb = document.getElementById('sidebar');
+    const handle = document.getElementById('sbDrag');
+    if (!sb || !handle) return;
+    // restore position
+    try {
+      const pos = JSON.parse(localStorage.getItem('ms_nav_pos') || 'null');
+      if (pos && typeof pos.left === 'number') {
+        sb.style.left = pos.left + 'px';
+        sb.style.top = pos.top + 'px';
+        sb.style.right = 'auto';
+      }
+    } catch (_) {}
+    let dragging = false, ox = 0, oy = 0;
+    const onDown = (e) => {
+      if (e.button != null && e.button !== 0) return;
+      dragging = true;
+      const r = sb.getBoundingClientRect();
+      const cx = e.clientX != null ? e.clientX : (e.touches && e.touches[0].clientX);
+      const cy = e.clientY != null ? e.clientY : (e.touches && e.touches[0].clientY);
+      ox = cx - r.left;
+      oy = cy - r.top;
+      handle.setPointerCapture && handle.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    };
+    const onMove = (e) => {
+      if (!dragging) return;
+      const cx = e.clientX != null ? e.clientX : (e.touches && e.touches[0].clientX);
+      const cy = e.clientY != null ? e.clientY : (e.touches && e.touches[0].clientY);
+      if (cx == null) return;
+      let left = cx - ox;
+      let top = cy - oy;
+      const maxL = window.innerWidth - sb.offsetWidth - 8;
+      const maxT = window.innerHeight - 40;
+      left = Math.max(8, Math.min(maxL, left));
+      top = Math.max(8, Math.min(maxT, top));
+      sb.style.left = left + 'px';
+      sb.style.top = top + 'px';
+      sb.style.right = 'auto';
+      sb.style.bottom = 'auto';
+    };
+    const onUp = () => {
+      if (!dragging) return;
+      dragging = false;
+      try {
+        localStorage.setItem('ms_nav_pos', JSON.stringify({
+          left: parseFloat(sb.style.left) || 12,
+          top: parseFloat(sb.style.top) || 68
+        }));
+      } catch (_) {}
+    };
+    handle.addEventListener('pointerdown', onDown);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+  },
+
   navigate(view) {
     Store.get().ui.view = view;
     document.querySelectorAll('.view').forEach(v => v.classList.remove('on'));
     const el = document.getElementById('v-' + view);
     if (el) el.classList.add('on');
     document.querySelectorAll('.nav, .mni').forEach(n => n.classList.toggle('on', n.dataset.view === view));
+    // Canvas-first workspace on board
+    if (view === 'board') {
+      document.body.classList.add('board-workspace');
+      // default: hide nav & props, keep tools
+      document.body.classList.remove('bw-nav', 'bw-props', 'bw-tools-collapsed');
+    } else {
+      document.body.classList.remove('board-workspace', 'bw-nav', 'bw-props', 'bw-tools-collapsed');
+    }
     this.renderCurrent();
+    // field needs resize after layout change
+    if (view === 'board') {
+      requestAnimationFrame(() => {
+        try { BoardEngine.render && BoardEngine.render(); } catch (_) {}
+        window.dispatchEvent(new Event('resize'));
+      });
+    }
+  },
+
+  /** Panel layout helpers — do not reset board state */
+  _afterPanelToggle() {
+    this._syncPanelButtons();
+    requestAnimationFrame(() => {
+      try { BoardEngine.render && BoardEngine.render(); } catch (_) {}
+      window.dispatchEvent(new Event('resize'));
+    });
+  },
+  _syncPanelButtons() {
+    const on = (sel, cond) => {
+      document.querySelectorAll(sel).forEach(b => b.classList.toggle('on', !!cond));
+    };
+    on('[data-action="toggle-nav"]', document.body.classList.contains('bw-nav'));
+    on('[data-action="toggle-props"]', document.body.classList.contains('bw-props'));
+    on('[data-action="toggle-tools"]', document.body.classList.contains('bw-tools-collapsed'));
+  },
+  toggleNav() {
+    document.body.classList.toggle('bw-nav');
+    this._afterPanelToggle();
+  },
+  toggleProps() {
+    document.body.classList.toggle('bw-props');
+    this._afterPanelToggle();
+  },
+  toggleTools() {
+    document.body.classList.toggle('bw-tools-collapsed');
+    this._afterPanelToggle();
+  },
+  showAllPanels() {
+    document.body.classList.add('bw-nav', 'bw-props');
+    document.body.classList.remove('bw-tools-collapsed');
+    this._afterPanelToggle();
   },
 
   renderCurrent() {
@@ -80,7 +189,7 @@ const App = {
   bindEvents() {
     // Event delegation — single listener
     document.addEventListener('click', e => {
-      const t = e.target.closest('[data-action],[data-view],[data-tool],[data-ai],[data-edit-training],[data-del-training],[data-dup-training],[data-edit-player],[data-del-player],[data-scheme],[data-load-board],[data-del-board],[data-special],[data-day],[data-view-exercise],[data-view-match],[data-del-match],[data-tpl],[data-modal-action],[data-b3-phase],[data-b3-rot],[data-del-myex],[data-add-myex-tr],[data-load-myex-board],[data-del-diary],[data-edit-diary],[data-load-diary-board],[data-diary-filter],[data-play-anim]');
+      const t = e.target.closest('[data-action],[data-view],[data-tool],[data-ai],[data-edit-training],[data-del-training],[data-dup-training],[data-edit-player],[data-del-player],[data-scheme],[data-load-board],[data-del-board],[data-special],[data-day],[data-view-exercise],[data-view-match],[data-del-match],[data-tpl],[data-modal-action],[data-b3-phase],[data-board-tpl],[data-b3-rot],[data-del-myex],[data-add-myex-tr],[data-load-myex-board],[data-del-diary],[data-edit-diary],[data-load-diary-board],[data-diary-filter],[data-play-anim]');
       if (!t) {
         // close search
         if (!e.target.closest('.gs')) document.getElementById('gResults')?.classList.remove('show');
@@ -136,6 +245,10 @@ const App = {
         Toast.show(document.body.classList.contains('present-mode') ? 'Presentation ON' : 'Presentation OFF');
         return;
       }
+      if (action === 'toggle-nav') return App.toggleNav();
+      if (action === 'toggle-props') return App.toggleProps();
+      if (action === 'toggle-tools') return App.toggleTools();
+      if (action === 'show-all-panels') return App.showAllPanels();
       if (action === 'toggle-fullscreen') return BoardEngine.toggleFullscreen();
       if (action === 'exit-fullscreen') return BoardEngine.exitFullscreen();
       if (action === 'zoom-in') return BoardEngine.setZoom(BoardEngine.camera.zoom * 1.2);
@@ -160,6 +273,12 @@ const App = {
       if (t.dataset.editPlayer) return Actions.editPlayer(t.dataset.editPlayer);
       if (t.dataset.delPlayer) return Modal.confirm('Видалити гравця?', () => { Store.get().players = Store.get().players.filter(x => x.id !== t.dataset.delPlayer); StorageManager.save(); App.renderCurrent(); });
       if (t.dataset.scheme) { BoardEngine.applyScheme(t.dataset.scheme); App.navigate('board'); return; }
+      if (t.dataset.boardTpl) {
+        BoardEngine.applyScheme(t.dataset.boardTpl);
+        App.navigate('board');
+        Toast.show('Шаблон відкрито на дошці — можна змінювати', 'ok');
+        return;
+      }
       if (t.dataset.b3Phase) {
         BoardEngine.applyScheme(t.dataset.b3Phase);
         App.navigate('board');

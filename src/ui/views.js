@@ -166,7 +166,16 @@ const Views = {
     const s = Store.get();
     return `
       <div class="st">Тактичні схеми</div>
-      <div class="card"><div class="ct">Базові схеми</div>
+      <div class="card"><div class="ct">Шаблони тренувальних розстановок</div>
+        <p class="note-sm">Сучасні шаблони для дошки. Після відкриття можна вільно змінювати позиції, стрілки та зони.</p>
+        <div class="sg">${(DEMO.boardTemplates||[]).map(t => `
+          <button type="button" class="sb2" data-board-tpl="${t.scheme}" title="${sanitize(t.description)}"
+            style="text-align:left;min-width:150px;padding:10px 12px">
+            <strong>${sanitize(t.name)}</strong><br>
+            <span style="font-size:10px;color:var(--muted)">${t.scheme}</span>
+          </button>`).join('')}</div>
+      </div>
+      <div class="card"><div class="ct">Усі формації</div>
         <div class="sg">${Object.keys(SCHEMES).map(k => `<button class="sb2" data-scheme="${k}">${k}</button>`).join('')}</div>
       </div>
       <div class="card"><div class="ct">Збережені схеми</div>
@@ -262,8 +271,8 @@ const Views = {
     const weekLoad = LoadModel.weeklyLoad(s.trainings);
     const recent = s.trainings.slice(-8);
     return `
-      <div class="st">Аналітика <button class="btn btn-s btn-sm" data-action="export-stats">Export</button></div>
-      <p class="note-sm" style="margin-bottom:12px">Load = Duration × RPE. Це планувальний показник, а не медична оцінка.</p>
+      <div class="st">Аналітика <button class="btn btn-s btn-sm" data-action="export-stats">Експорт</button></div>
+      <p class="note-sm" style="margin-bottom:12px">Навантаження = Тривалість × RPE. Це планувальний показник, а не медична оцінка.</p>
       <div class="dg">
         <div class="sc"><div class="lb">Тренувань</div><div class="vl">${s.trainings.length}</div></div>
         <div class="sc"><div class="lb">Загальний час</div><div class="vl">${totalTime}<span style="font-size:13px"> хв</span></div></div>
@@ -309,7 +318,7 @@ const Views = {
       </div>
       <div class="card"><div class="ct">Дані</div>
         <div class="fa">
-          <button class="btn btn-s" data-action="export">Export JSON</button>
+          <button class="btn btn-s" data-action="export">Експорт JSON</button>
           <button class="btn btn-s" data-action="import-trigger">Import JSON</button>
           <input type="file" id="importFile" accept=".json" style="display:none">
           <button class="btn btn-s" data-action="print">Print</button>
@@ -318,7 +327,7 @@ const Views = {
       </div>
       <div class="card"><div class="ct">Про застосунок</div>
         <p style="font-size:12px;color:var(--muted);line-height:1.6">
-          Football Coach Board v2 · МЕТАЛІСТ ШТУТГАРТ<br>
+          Тренерська платформа · МЕТАЛІСТ ШТУТГАРТ<br>
           Schema v${SCHEMA_VERSION} · localStorage · Vanilla JS<br>
           Production-quality prototype
         </p>
