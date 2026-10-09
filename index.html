@@ -32,26 +32,28 @@
 </header>
 
 <nav class="sidebar" id="sidebar" aria-label="Головна навігація">
-  <div class="nav-sec">Головне</div>
-  <a class="nav on" data-view="dashboard" href="#"><span class="ic">📊</span><span>Dashboard</span></a>
-  <a class="nav" data-view="trainings" href="#"><span class="ic">📋</span><span>Тренування</span></a>
-  <a class="nav" data-view="board" href="#"><span class="ic">⚽</span><span>Дошка</span></a>
-  <a class="nav" data-view="exercises" href="#"><span class="ic">🏋️</span><span>Вправи</span></a>
-  <div class="nav-sec">Тактика</div>
-  <a class="nav" data-view="back3" href="#"><span class="ic">3️⃣</span><span>3 Захисники</span></a>
-  <a class="nav" data-view="tactics" href="#"><span class="ic">📐</span><span>Схеми</span></a>
-  <div class="nav-sec">Команда</div>
-  <a class="nav" data-view="players" href="#"><span class="ic">👥</span><span>Гравці</span></a>
-  <a class="nav" data-view="exercises" href="#"><span class="ic">🏋️</span><span>Вправи</span></a>
-  <a class="nav" data-view="myex" href="#"><span class="ic">⭐</span><span>Мої вправи</span></a>
-  <div class="nav-sec">Планування</div>
-  <a class="nav" data-view="calendar" href="#"><span class="ic">📅</span><span>Календар</span></a>
-  <a class="nav" data-view="diary" href="#"><span class="ic">📓</span><span>Щоденник</span></a>
-  <a class="nav" data-view="matches" href="#"><span class="ic">🏆</span><span>Матчі</span></a>
-  <a class="nav" data-view="analytics" href="#"><span class="ic">📈</span><span>Аналітика</span></a>
-  <a class="nav" data-view="settings" href="#"><span class="ic">⚙️</span><span>Налаштування</span></a>
+  <div class="sb-scroll">
+    <div class="nav-sec">Головне</div>
+    <a class="nav on" data-view="dashboard" href="#"><span class="ic" aria-hidden="true">📊</span><span class="nl">Головна</span></a>
+    <a class="nav" data-view="trainings" href="#"><span class="ic" aria-hidden="true">📋</span><span class="nl">Тренування</span></a>
+    <a class="nav" data-view="board" href="#"><span class="ic" aria-hidden="true">⚽</span><span class="nl">Тактична дошка</span></a>
+    <div class="nav-sec">Вправи</div>
+    <a class="nav" data-view="exercises" href="#"><span class="ic" aria-hidden="true">🏋️</span><span class="nl">Бібліотека вправ</span></a>
+    <a class="nav" data-view="myex" href="#"><span class="ic" aria-hidden="true">⭐</span><span class="nl">Мої вправи</span></a>
+    <div class="nav-sec">Тактика</div>
+    <a class="nav" data-view="back3" href="#"><span class="ic" aria-hidden="true">3️⃣</span><span class="nl">3 захисники</span></a>
+    <a class="nav" data-view="tactics" href="#"><span class="ic" aria-hidden="true">📐</span><span class="nl">Схеми та фази</span></a>
+    <div class="nav-sec">Команда</div>
+    <a class="nav" data-view="players" href="#"><span class="ic" aria-hidden="true">👥</span><span class="nl">Гравці</span></a>
+    <a class="nav" data-view="matches" href="#"><span class="ic" aria-hidden="true">🏆</span><span class="nl">Матчі</span></a>
+    <div class="nav-sec">Планування</div>
+    <a class="nav" data-view="calendar" href="#"><span class="ic" aria-hidden="true">📅</span><span class="nl">Календар</span></a>
+    <a class="nav" data-view="diary" href="#"><span class="ic" aria-hidden="true">📓</span><span class="nl">Щоденник тренера</span></a>
+    <a class="nav" data-view="analytics" href="#"><span class="ic" aria-hidden="true">📈</span><span class="nl">Аналітика</span></a>
+    <a class="nav" data-view="settings" href="#"><span class="ic" aria-hidden="true">⚙️</span><span class="nl">Налаштування</span></a>
+  </div>
   <div class="sb-foot">
-    <button class="btn btn-s btn-sm" style="width:100%" data-action="export"><span>Export JSON</span></button>
+    <button type="button" class="btn btn-s btn-sm sb-export" data-action="export">Експорт JSON</button>
   </div>
 </nav>
 
@@ -110,9 +112,9 @@
 <nav class="mn" id="mobileNav" aria-label="Мобільна навігація">
   <a class="mni on" data-view="dashboard" href="#"><span class="ic">📊</span>Головна</a>
   <a class="mni" data-view="board" href="#"><span class="ic">⚽</span>Дошка</a>
-  <a class="mni" data-view="trainings" href="#"><span class="ic">📋</span>Трен.</a>
-  <a class="mni" data-view="players" href="#"><span class="ic">👥</span>Склад</a>
-  <a class="mni" data-view="calendar" href="#"><span class="ic">📅</span>Кал.</a>
+  <a class="mni" data-view="trainings" href="#"><span class="ic">📋</span>Тренув.</a>
+  <a class="mni" data-view="players" href="#"><span class="ic">👥</span>Гравці</a>
+  <a class="mni" data-view="calendar" href="#"><span class="ic">📅</span>Календар</a>
 </nav>
 
 <div class="mo" id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
@@ -124,6 +126,13 @@
 </div>
 
 <button class="fs-exit-btn" id="fsExitBtn" data-action="exit-fullscreen" aria-label="Вийти з повноекранного режиму">✕ EXIT BOARD</button>
+<div class="bw-float bw-float-tl" id="bwFloat" aria-label="Керування панелями дошки">
+  <button type="button" class="tb" data-action="toggle-nav" title="Навігація">☰</button>
+  <button type="button" class="tb" data-action="toggle-tools" title="Інструменти">🧰</button>
+  <button type="button" class="tb" data-action="toggle-props" title="Властивості">⚙</button>
+  <button type="button" class="tb" data-action="show-all-panels" title="Усі панелі">▦</button>
+  <button type="button" class="tb" data-action="toggle-fullscreen" title="Fullscreen">⛶</button>
+</div>
 <div class="tc2" id="toasts" aria-live="polite"></div>
 
 
