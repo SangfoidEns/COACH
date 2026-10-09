@@ -109,10 +109,13 @@ const App = {
     document.querySelectorAll('.nav, .mni').forEach(n => n.classList.toggle('on', n.dataset.view === view));
     // Canvas-first workspace on board
     if (view === 'board') {
-      document.body.classList.add('board-workspace');
-      document.body.classList.remove('bw-props', 'bw-tools-collapsed');
+      document.body.classList.add('board-workspace', 'mode-board-focus');
+      document.body.classList.remove('bw-props', 'bw-tools-collapsed', 'bw-nav-hide');
     } else {
-      document.body.classList.remove('board-workspace', 'bw-nav', 'bw-props', 'bw-tools-collapsed');
+      document.body.classList.remove(
+        'board-workspace', 'mode-board-focus', 'board-only-mode', 'board-fs-nav',
+        'bw-nav', 'bw-props', 'bw-tools-collapsed', 'bw-nav-hide'
+      );
     }
     this.renderCurrent();
     // field needs resize after layout change
@@ -254,6 +257,10 @@ const App = {
       if (action === 'toggle-props') return App.toggleProps();
       if (action === 'toggle-tools') return App.toggleTools();
       if (action === 'show-all-panels') return App.showAllPanels();
+      if (action === 'exit-board') {
+        App.navigate('dashboard');
+        return;
+      }
       if (action === 'toggle-fullscreen') return BoardEngine.toggleFullscreen();
       if (action === 'exit-fullscreen') return BoardEngine.exitFullscreen();
       if (action === 'zoom-in') return BoardEngine.setZoom(BoardEngine.camera.zoom * 1.2);

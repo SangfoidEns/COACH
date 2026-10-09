@@ -33,6 +33,12 @@ const BoardEngine = {
     // Resize
     if (window.ResizeObserver) {
       new ResizeObserver(() => { this.applyCamera(); this.renderTokens(); this.renderDrawings(); }).observe(c);
+    window.addEventListener('orientationchange', () => {
+      setTimeout(() => { this.fitField(); this.render(); }, 200);
+    });
+    window.addEventListener('resize', () => {
+      this.applyCamera();
+    });
     }
     // Space for pan
     document.addEventListener('keydown', e => {
@@ -57,14 +63,14 @@ const BoardEngine = {
     const c = document.getElementById('fieldContainer');
     if (!c) return { x: 0.5, y: 0.5 };
     const r = c.getBoundingClientRect();
-    // local 0..1 in visible container
+    const z = this.camera.zoom || 1;
+    // Нормалізовані координати в контейнері (0..1)
     let lx = (clientX - r.left) / Math.max(1, r.width);
     let ly = (clientY - r.top) / Math.max(1, r.height);
-    // apply inverse camera
-    const z = this.camera.zoom || 1;
-    const wx = (lx - 0.5) / z + 0.5 + this.camera.x;
-    const wy = (ly - 0.5) / z + 0.5 + this.camera.y;
-    return { x: clamp(wx, 0, 1), y: clamp(wy, 0, 1) };
+    // Інверсія camera: stage scale+translate від центру
+    const wx = (lx - 0.5) / z + 0.5 + (this.camera.x || 0);
+    const wy = (ly - 0.5) / z + 0.5 + (this.camera.y || 0);
+    return { x: clamp(wx, -0.05, 1.05), y: clamp(wy, -0.05, 1.05) };
   },
 
   worldToScreenPct(wx, wy) {
@@ -1081,12 +1087,10 @@ const BoardEngine = {
     if (!el) return;
     const tool = Store.get().activeBoard.tool;
     el.innerHTML = `
-      <div class="tg" title="Панелі">
-        <button class="tb" data-action="toggle-nav" title="Навігація">☰</button>
-        <button class="tb" data-action="toggle-tools" title="Панель інструментів">🧰</button>
-        <button class="tb" data-action="toggle-props" title="Властивості">☰│</button>
-        <button class="tb" data-action="show-all-panels" title="Показати всі панелі">▦</button>
-        <button class="tb" data-action="toggle-fullscreen" title="На весь екран">⛶</button>
+      <div class="tg" title="Вихід">
+        <button type="button" class="tb tb-exit" data-action="exit-board" title="Вийти з дошки">✕</button>
+        <button type="button" class="tb" data-action="toggle-fullscreen" title="На весь екран">⛶</button>
+        <button type="button" class="tb" data-action="toggle-tools" title="Згорнути інструменти">🧰</button>
       </div>
       <div class="tg">
         <button class="tb" data-action="toggle-present" title="Режим показу">▶ Показ</button>
