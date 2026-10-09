@@ -68,10 +68,24 @@ const BoardEngine = {
   },
 
   worldToScreenPct(wx, wy) {
+    // Позиції у % поля; масштаб/pan застосовується до всього field-stage
+    return { left: (wx ?? 0) * 100, top: (wy ?? 0) * 100 };
+  },
+
+  /** Масштаб і зсув усього поля (розмітка + фішки разом) */
+  applyCamera() {
+    const stage = document.getElementById('fieldStage');
+    const c = document.getElementById('fieldContainer');
+    if (!stage || !c) return;
     const z = this.camera.zoom || 1;
-    const sx = ((wx - this.camera.x - 0.5) * z + 0.5) * 100;
-    const sy = ((wy - this.camera.y - 0.5) * z + 0.5) * 100;
-    return { left: sx, top: sy };
+    const w = c.clientWidth || 1;
+    const h = c.clientHeight || 1;
+    // camera.x/y — зсув у світових одиницях 0..1
+    const tx = -this.camera.x * w;
+    const ty = -this.camera.y * h;
+    stage.style.transformOrigin = '50% 50%';
+    stage.style.transform = `translate(${tx * z}px, ${ty * z}px) scale(${z})`;
+    this.updateZoomIndicator();
   },
 
   /* ── History ── */
@@ -100,7 +114,7 @@ const BoardEngine = {
       if (snap.camera) this.camera = snap.camera;
     } catch (_) {}
     this.render();
-    Toast.show('↩ Undo');
+    Toast.show('↩ Скасовано');
   },
 
   redo() {
@@ -113,12 +127,13 @@ const BoardEngine = {
       if (snap.camera) this.camera = snap.camera;
     } catch (_) {}
     this.render();
-    Toast.show('↪ Redo');
+    Toast.show('↪ Повторено');
   },
 
   /* ── FULLSCREEN / BOARD-ONLY MODE ── */
   enterFullscreen() {
     this.isBoardOnly = true;
+    document.body.classList.add('board-fs-nav');
     document.body.classList.add('board-only-mode');
     App.navigate('board');
     // Telegram Mini App fullscreen (if available)
@@ -139,6 +154,7 @@ const BoardEngine = {
 
   exitFullscreen() {
     this.isBoardOnly = false;
+    document.body.classList.remove('board-fs-nav');
     document.body.classList.remove('board-only-mode');
     if (typeof TelegramManager !== 'undefined') { TelegramManager.exitFullscreen(); TelegramManager.unlockOrientation(); }
     if (document.fullscreenElement) {
@@ -325,6 +341,7 @@ const BoardEngine = {
       const dy = (e.clientY - this.panStart.y) / r.height / this.camera.zoom;
       this.camera.x = this.panStart.camX - dx;
       this.camera.y = this.panStart.camY - dy;
+      this.applyCamera();
       this.renderTokens();
       this.renderDrawings();
       return;
@@ -477,6 +494,7 @@ const BoardEngine = {
 
   resetCamera() {
     this.camera = { x: 0, y: 0, zoom: 1 };
+    this.applyCamera();
     this.render();
     this.updateZoomIndicator();
   },
@@ -646,9 +664,8 @@ const BoardEngine = {
   tokenMetrics() {
     const c = document.getElementById('fieldContainer');
     const h = (c && c.clientHeight) || 600;
-    const z = (this.camera && this.camera.zoom) || 1;
-    // базовий діаметр гравця ≈ 2.8% висоти поля * zoom
-    const player = Math.max(14, Math.min(52, h * 0.028 * z));
+    // діаметр відносно розмітки поля (zoom масштабує весь stage)
+    const player = Math.max(14, Math.min(48, h * 0.028));
     const ball = Math.max(8, player * 0.42);
     const cone = Math.max(10, player * 0.55);
     const equip = Math.max(12, player * 0.7);
@@ -807,6 +824,7 @@ const BoardEngine = {
 
   render() {
     const s = Store.get();
+    this.applyCamera();
     this.drawField(s.activeBoard.fieldView || 'full');
     this.renderTokens();
     this.renderDrawings();
@@ -827,7 +845,6 @@ const BoardEngine = {
       </div>
       <div class="tg">
         <button class="tb" data-action="toggle-present" title="Режим показу">▶ Показ</button>
-        <button class="tb" data-action="toggle-fullscreen" title="Fullscreen Board">⛶</button>
       </div>
       <div class="tg">
         <button class="tb ${tool==='select'?'on':''}" data-tool="select" title="Вибір">↖</button>

@@ -44,7 +44,7 @@ const App = {
 
 
   initFloatingNav() {
-    document.body.classList.add('nav-float');
+    // Звичайний режим: фіксована ліва навігація. Плаваюча — лише board-fs-nav / board-only.
     const sb = document.getElementById('sidebar');
     const handle = document.getElementById('sbDrag');
     if (!sb || !handle) return;

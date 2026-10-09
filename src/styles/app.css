@@ -672,3 +672,74 @@ body.nav-float.board-workspace.bw-props .app {
 body.nav-float:not(.board-workspace) .rp {
   /* keep right panel in grid */
 }
+
+/* Поле + фішки масштабуються разом */
+.field-stage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform-origin: 50% 50%;
+  will-change: transform;
+}
+.field-stage .fs,
+.field-stage .dl,
+.field-stage .dl svg,
+.field-stage .pl {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.fc { position: relative; overflow: hidden; }
+
+
+/* Плаваюча навігація — ЛИШЕ дошка + повний екран */
+body.nav-float .app {
+  /* скасовано: звичайний режим — фіксована ліва навігація */
+  grid-template-columns: var(--sw) 1fr var(--rw);
+}
+body.nav-float .sidebar {
+  position: relative !important;
+  top: auto !important;
+  left: auto !important;
+  width: var(--sw) !important;
+  max-width: var(--sw) !important;
+  max-height: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  border: none !important;
+  border-right: 1px solid var(--border) !important;
+  z-index: auto !important;
+}
+body.nav-float .sb-drag {
+  display: none !important; /* ручка лише в fullscreen дошки */
+}
+/* Увімкнення плаваючої панелі тільки в board-only / board-fs-nav */
+body.board-only-mode .sidebar,
+body.board-fs-nav .sidebar {
+  position: fixed !important;
+  top: 56px !important;
+  left: 12px !important;
+  width: 220px !important;
+  max-width: min(220px, 90vw) !important;
+  max-height: calc(100vh - 72px) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.45) !important;
+  z-index: 10050 !important;
+  display: flex !important;
+  background: var(--panel) !important;
+}
+body.board-only-mode .sb-drag,
+body.board-fs-nav .sb-drag {
+  display: flex !important;
+}
+body.board-only-mode .sidebar .nav .nl,
+body.board-fs-nav .sidebar .nav .nl {
+  display: block !important;
+}
+/* float controls only in board workspace / fs */
+.bw-float { display: none !important; }
+.board-workspace .bw-float,
+.board-only-mode .bw-float { display: flex !important; }
