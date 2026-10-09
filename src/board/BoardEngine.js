@@ -21,8 +21,6 @@ const BoardEngine = {
   init() {
     const c = document.getElementById('fieldContainer');
     if (!c) return;
-    c.style.touchAction = 'none';
-    c.style.userSelect = 'none';
     // Unified Pointer Events — primary interaction path
     c.addEventListener('pointerdown', e => this.onPointerDown(e), { passive: false });
     c.addEventListener('pointermove', e => this.onPointerMove(e), { passive: false });
@@ -134,7 +132,7 @@ const BoardEngine = {
     }
     // Ensure board is visible and sized
     setTimeout(() => this.render(), 100);
-    Toast.show('Лише дошка — ESC або ВИХІД', 'ok');
+    Toast.show('Board Only Mode — ESC або EXIT для виходу', 'ok');
   },
 
   exitFullscreen() {
@@ -635,11 +633,7 @@ const BoardEngine = {
       `<rect x="${W / 2 - 91.5}" y="${H - 75}" width="183" height="55" fill="none" stroke="${L}" stroke-width="2"/>` +
       `<circle cx="${W / 2}" cy="${H - 130}" r="3" fill="${L}"/>` +
       `<rect x="${W / 2 - 36.6}" y="5" width="73.2" height="15" fill="none" stroke="${L}" stroke-width="2"/>` +
-      `<rect x="${W / 2 - 36.6}" y="${H - 20}" width="73.2" height="15" fill="none" stroke="${L}" stroke-width="2"/>` +
-      /* Watermark — background only, no pointer events, not in undo */
-      `<text class="pitch-watermark" x="${W / 2}" y="${H / 2}" text-anchor="middle" dominant-baseline="middle" ` +
-      `fill="rgba(255,255,255,0.14)" font-family="system-ui,-apple-system,Segoe UI,sans-serif" ` +
-      `font-weight="700" font-size="42" letter-spacing="1.5" pointer-events="none" style="user-select:none">Metalist Stuttgart</text>`;
+      `<rect x="${W / 2 - 36.6}" y="${H - 20}" width="73.2" height="15" fill="none" stroke="${L}" stroke-width="2"/>`;
   },
 
   renderTokens() {
@@ -775,68 +769,61 @@ const BoardEngine = {
     if (!el) return;
     const tool = Store.get().activeBoard.tool;
     el.innerHTML = `
-      <div class="tg" title="Панелі">
-        <button class="tb" data-action="toggle-nav" title="Навігація">☰</button>
-        <button class="tb" data-action="toggle-tools" title="Панель інструментів">🧰</button>
-        <button class="tb" data-action="toggle-props" title="Властивості">☰│</button>
-        <button class="tb" data-action="show-all-panels" title="Показати всі панелі">▦</button>
-        <button class="tb" data-action="toggle-fullscreen" title="На весь екран">⛶</button>
-      </div>
       <div class="tg">
-        <button class="tb" data-action="toggle-present" title="Режим показу">▶ Показ</button>
+        <button class="tb" data-action="toggle-present" title="Presentation mode">▶ Present</button>
         <button class="tb" data-action="toggle-fullscreen" title="Fullscreen Board">⛶</button>
       </div>
       <div class="tg">
-        <button class="tb ${tool==='select'?'on':''}" data-tool="select" title="Вибір">↖</button>
-        <button class="tb ${tool==='player'?'on':''}" data-tool="player" title="Гравець">●</button>
-        <button class="tb ${tool==='opponent'?'on':''}" data-tool="opponent" title="Суперник">○</button>
-        <button class="tb ${tool==='ball'?'on':''}" data-tool="ball" title="М'яч">⚽</button>
+        <button class="tb ${tool==='select'?'on':''}" data-tool="select" title="Select">↖</button>
+        <button class="tb ${tool==='player'?'on':''}" data-tool="player" title="Player">●</button>
+        <button class="tb ${tool==='opponent'?'on':''}" data-tool="opponent" title="Opponent">○</button>
+        <button class="tb ${tool==='ball'?'on':''}" data-tool="ball" title="Ball">⚽</button>
       </div>
       <div class="tg">
-        <button class="tb ${tool==='pass'?'on':''}" data-tool="pass" title="Передача">⇒</button>
-        <button class="tb ${tool==='run'?'on':''}" data-tool="run" title="Рух">⇢</button>
-        <button class="tb ${tool==='dribble'?'on':''}" data-tool="dribble" title="Ведення">∿</button>
-        <button class="tb ${tool==='shot'?'on':''}" data-tool="shot" title="Удар">⚡</button>
-        <button class="tb ${tool==='press'?'on':''}" data-tool="press" title="Пресинг">⬇</button>
-        <button class="tb ${tool==='arrow'?'on':''}" data-tool="arrow" title="Стрілка">→</button>
+        <button class="tb ${tool==='pass'?'on':''}" data-tool="pass" title="Pass">⇒</button>
+        <button class="tb ${tool==='run'?'on':''}" data-tool="run" title="Run">⇢</button>
+        <button class="tb ${tool==='dribble'?'on':''}" data-tool="dribble" title="Dribble">∿</button>
+        <button class="tb ${tool==='shot'?'on':''}" data-tool="shot" title="Shot">⚡</button>
+        <button class="tb ${tool==='press'?'on':''}" data-tool="press" title="Press">⬇</button>
+        <button class="tb ${tool==='arrow'?'on':''}" data-tool="arrow" title="Arrow">→</button>
       </div>
       <div class="tg">
-        <button class="tb ${tool==='zone'?'on':''}" data-tool="zone" title="Зона (прямокутник)">▢</button>
-        <button class="tb ${tool==='circle'?'on':''}" data-tool="circle" title="Зона (коло)">○</button>
-        <button class="tb ${tool==='polygon'?'on':''}" data-tool="polygon" title="Зона (багатокутник)">⬠</button>
-        <button class="tb ${tool==='freehand'?'on':''}" data-tool="freehand" title="Зона (вільна)">✎</button>
-        <button class="tb ${tool==='cone'?'on':''}" data-tool="cone" title="Фішка">△</button>
-        <button class="tb ${tool==='mannequin'?'on':''}" data-tool="mannequin" title="Манекен">▣</button>
-        <button class="tb ${tool==='text'?'on':''}" data-tool="text" title="Текст">T</button>
+        <button class="tb ${tool==='zone'?'on':''}" data-tool="zone" title="Rect Zone">▢</button>
+        <button class="tb ${tool==='circle'?'on':''}" data-tool="circle" title="Circle Zone">○</button>
+        <button class="tb ${tool==='polygon'?'on':''}" data-tool="polygon" title="Polygon Zone">⬠</button>
+        <button class="tb ${tool==='freehand'?'on':''}" data-tool="freehand" title="Freehand Zone">✎</button>
+        <button class="tb ${tool==='cone'?'on':''}" data-tool="cone" title="Cone">△</button>
+        <button class="tb ${tool==='mannequin'?'on':''}" data-tool="mannequin" title="Mannequin">▣</button>
+        <button class="tb ${tool==='text'?'on':''}" data-tool="text" title="Text">T</button>
       </div>
       <div class="tg">
         <select id="fieldViewSel" style="padding:3px 6px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px">
-          <option value="full">Повне поле</option><option value="half">Half</option><option value="third">Атакувальна третина</option><option value="def-third">Оборонна третина</option><option value="penalty">Штрафний майданчик</option>
+          <option value="full">Full pitch</option><option value="half">Half</option><option value="third">Attacking third</option><option value="def-third">Defensive third</option><option value="penalty">Penalty area</option>
           <option value="box">Box</option><option value="own">Own</option><option value="opp">Opp</option>
         </select>
       </div>
       <div class="tg">
         <select id="schemeSel" style="padding:3px 6px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px">
-          <option value="">Формація...</option>
+          <option value="">Formation...</option>
           ${Object.keys(SCHEMES).map(k => `<option value="${k}">${k}</option>`).join('')}
         </select>
       </div>
       <div class="tg">
-        <button class="tb" data-action="zoom-out" title="Зменшити">−</button>
-        <button class="tb" data-action="zoom-fit" title="Вписати поле">⊡</button>
-        <button class="tb" data-action="zoom-in" title="Збільшити">+</button>
+        <button class="tb" data-action="zoom-out" title="Zoom −">−</button>
+        <button class="tb" data-action="zoom-fit" title="Fit">⊡</button>
+        <button class="tb" data-action="zoom-in" title="Zoom +">+</button>
       </div>
       <div class="tg">
-        <button class="tb" data-action="anim-play" title="Відтворити">▶</button>
-        <button class="tb" data-action="anim-pause" title="Пауза">⏸</button>
-        <button class="tb" data-action="anim-stop" title="Стоп">⏹</button>
-        <input type="range" id="animSpeed" min="0.25" max="2" step="0.25" value="1" style="width:50px" title="Швидкість">
+        <button class="tb" data-action="anim-play" title="Play">▶</button>
+        <button class="tb" data-action="anim-pause" title="Pause">⏸</button>
+        <button class="tb" data-action="anim-stop" title="Stop">⏹</button>
+        <input type="range" id="animSpeed" min="0.25" max="2" step="0.25" value="1" style="width:50px" title="Speed">
       </div>
       <div class="tg">
-        <button class="tb" data-action="board-undo" title="Скасувати">↩</button>
-        <button class="tb" data-action="board-redo" title="Повторити">↪</button>
-        <button class="tb" data-action="board-clear" title="Очистити">🗑</button>
-        <button class="tb" data-action="board-save" title="Зберегти схему">💾</button>
+        <button class="tb" data-action="board-undo" title="Undo">↩</button>
+        <button class="tb" data-action="board-redo" title="Redo">↪</button>
+        <button class="tb" data-action="board-clear" title="Clear">🗑</button>
+        <button class="tb" data-action="board-save" title="Save">💾</button>
       </div>`;
     const fv = document.getElementById('fieldViewSel');
     if (fv) {
