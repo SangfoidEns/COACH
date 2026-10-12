@@ -1379,3 +1379,48 @@ body.mode-board-focus .field-stage {
   max-height: 100% !important;
   margin: 0 auto !important;
 }
+
+
+/* ═══ Компактна 2-рядкова панель дошки ═══ */
+body.mode-board-focus #boardToolbar.btb {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  gap: 4px !important;
+  max-width: min(720px, calc(100vw - 12px)) !important;
+  background: rgba(15, 23, 42, 0.78) !important;
+  backdrop-filter: blur(24px) saturate(190%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(190%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.25) !important;
+  transform: translateZ(0);
+}
+#boardToolbar .btb-rows {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  max-height: none;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x;
+  padding-bottom: 2px;
+}
+#boardToolbar.btb-collapsed .btb-rows {
+  max-height: 96px; /* ~2 рядки по 44px + gap */
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+#boardToolbar .btb-chrome {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 4px;
+  border-right: none !important;
+}
+#boardToolbar .tb {
+  min-width: 44px !important;
+  min-height: 44px !important;
+  flex: 0 0 auto;
+}

@@ -617,6 +617,75 @@ const BoardEngine = {
     });
   },
 
+
+  openRosterPicker(x, y) {
+    const s = Store.get();
+    const used = new Set(
+      (s.activeBoard.objects || [])
+        .filter(o => o.type === 'player' && o.playerId)
+        .map(o => o.playerId)
+    );
+    const available = (s.players || []).filter(p => !used.has(p.id));
+    if (!available.length) {
+      const num = s.activeBoard.objects.filter(o => o.type === 'player').length + 1;
+      const pos = this.clampWorld(x, y);
+      s.activeBoard.objects.push({
+        id: uid(), type: 'player', x: pos.x, y: pos.y, number: num, label: '',
+        team: 'own', playerId: null, rotation: 0, locked: false, visible: true
+      });
+      this.pushHistory();
+      this.render();
+      Toast.show('Немає вільних гравців у складі — додано анонімну фішку', 'warn');
+      return;
+    }
+    const list = available.map(p => {
+      const r = p.readiness != null ? p.readiness : (p.condition != null ? p.condition : 80);
+      const st = p.status === 'injured' ? ' 🩹' : (p.status === 'available' ? '' : ' · ' + p.status);
+      return `<button type="button" class="btn btn-s roster-pick" style="width:100%;margin:4px 0;text-align:left;min-height:44px"
+        data-pick-player="${p.id}">
+        <strong>#${p.number}</strong> ${sanitize(p.firstName)} ${sanitize(p.lastName)}${st}
+        <span style="float:right;color:var(--muted);font-size:12px">${sanitize(p.position)} · ${r}%</span>
+      </button>`;
+    }).join('');
+    Modal.open(
+      'Склад МЕТАЛІСТ ШТУТГАРТ',
+      `<p class="note-sm" style="margin-bottom:8px">Оберіть гравця для фішки на дошці</p>
+       <div style="max-height:50vh;overflow:auto">${list}</div>`,
+      [{ label: 'Скасувати', cls: 'btn-s', action: 'cancel' }]
+    );
+    const self = this;
+    setTimeout(() => {
+      document.querySelectorAll('[data-pick-player]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          self.placeRosterPlayer(btn.getAttribute('data-pick-player'), x, y);
+          Modal.close();
+        });
+      });
+    }, 30);
+  },
+
+  placeRosterPlayer(playerId, x, y) {
+    const s = Store.get();
+    const p = (s.players || []).find(pl => pl.id === playerId);
+    if (!p) return;
+    const pos = this.clampWorld(x, y);
+    const readiness = p.readiness != null ? p.readiness : (p.condition != null ? p.condition : 80);
+    s.activeBoard.objects.push({
+      id: uid(), type: 'player',
+      x: pos.x, y: pos.y,
+      number: p.number,
+      label: p.lastName || '',
+      team: 'own',
+      playerId: p.id,
+      readiness,
+      rotation: 0, locked: false, visible: true
+    });
+    this.pushHistory();
+    this.render();
+    try { TelegramManager.haptic('medium'); } catch (_) {}
+    Toast.show('#' + p.number + ' ' + p.firstName + ' ' + p.lastName + ' · ' + readiness + '%', 'ok');
+  },
+
   applyScheme(name) {
     const scheme = SCHEMES[name];
     if (!scheme) return;
@@ -1174,13 +1243,18 @@ const BoardEngine = {
     const el = document.getElementById('boardToolbar');
     if (!el) return;
     const tool = Store.get().activeBoard.tool;
+    const collapsed = el.classList.contains('btb-collapsed') || localStorage.getItem('ms_btb_collapsed') === '1';
+    if (collapsed) el.classList.add('btb-collapsed');
+    else el.classList.remove('btb-collapsed');
     el.innerHTML = `
-      <div class="tg" title="Вихід і панель">
+      <div class="tg btb-chrome" title="Керування панеллю">
         <button type="button" class="tb tb-exit" data-action="exit-board" title="Вихід з дошки">✕</button>
+        <button type="button" class="tb" data-action="toggle-toolbar-collapse" title="Згорнути / розгорнути панель">↕</button>
         <button type="button" class="tb" data-action="lock-toolbar" title="Зафіксувати панель">🔒</button>
         <button type="button" class="tb" data-action="toggle-fullscreen" title="На весь екран">⛶</button>
         <button type="button" class="tb" data-action="zoom-fit" title="Вписати поле">⊡</button>
       </div>
+      <div class="btb-rows">
       <div class="tg">
         <button class="tb" data-action="toggle-present" title="Режим показу">▶ Показ</button>
       </div>
@@ -1224,8 +1298,8 @@ const BoardEngine = {
       </div>
       <div class="tg">
         <select id="fieldViewSel" style="padding:3px 6px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px">
-          <option value="full">Повне поле</option><option value="half">Half</option><option value="third">Атакувальна третина</option><option value="def-third">Оборонна третина</option><option value="penalty">Штрафний майданчик</option>
-          <option value="box">Box</option><option value="own">Own</option><option value="opp">Opp</option>
+          <option value="full">Повне поле</option><option value="half">Половина</option><option value="third">Атакувальна третина</option><option value="def-third">Оборонна третина</option><option value="penalty">Штрафний майданчик</option>
+          <option value="box">Штрафний (box)</option><option value="own">Своя третина</option><option value="opp">Чужа третина</option>
         </select>
       </div>
       <div class="tg">
@@ -1250,11 +1324,18 @@ const BoardEngine = {
         <button class="tb" data-action="board-redo" title="Повторити">↪</button>
         <button class="tb" data-action="board-clear" title="Очистити">🗑</button>
         <button class="tb" data-action="board-save" title="Зберегти схему">💾</button>
+      </div>
       </div>`;
     const fv = document.getElementById('fieldViewSel');
     if (fv) {
       fv.value = Store.get().activeBoard.fieldView || 'full';
-      fv.onchange = () => { Store.get().activeBoard.fieldView = fv.value; BoardEngine.drawField(fv.value); };
+      fv.onchange = () => {
+        Store.get().activeBoard.fieldView = fv.value;
+        BoardEngine.drawField(fv.value);
+        BoardEngine.renderTokens();
+        BoardEngine.renderDrawings();
+        BoardEngine.fitField();
+      };
     }
     const ss = document.getElementById('schemeSel');
     if (ss) ss.onchange = () => { if (ss.value) BoardEngine.applyScheme(ss.value); };

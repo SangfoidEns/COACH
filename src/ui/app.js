@@ -335,6 +335,15 @@ const App = {
       if (action === 'toggle-props') return App.toggleProps();
       if (action === 'toggle-tools') return App.toggleTools();
       if (action === 'show-all-panels') return App.showAllPanels();
+      if (action === 'toggle-toolbar-collapse') {
+        const tb = document.getElementById('boardToolbar');
+        if (tb) {
+          tb.classList.toggle('btb-collapsed');
+          localStorage.setItem('ms_btb_collapsed', tb.classList.contains('btb-collapsed') ? '1' : '0');
+          try { BoardEngine.renderToolbar(); App.initBoardToolbarDrag(); } catch (_) {}
+        }
+        return;
+      }
       if (action === 'lock-toolbar') {
         const tb = document.getElementById('boardToolbar');
         if (tb) {
