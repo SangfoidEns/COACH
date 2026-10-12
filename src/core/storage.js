@@ -181,6 +181,58 @@ const StorageManager = {
     Toast.show('Експортовано', 'ok');
   },
 
+
+  /** Нативний вибір файлу: showOpenFilePicker → fallback input#importFile */
+  async pickAndImportJSON() {
+    // 1) Сучасний File System Access API (Chrome / Edge / частина desktop)
+    try {
+      if (typeof window.showOpenFilePicker === 'function') {
+        const handles = await window.showOpenFilePicker({
+          multiple: false,
+          types: [{
+            description: 'JSON',
+            accept: { 'application/json': ['.json'], 'text/plain': ['.json', '.txt'] }
+          }],
+          excludeAcceptAllOption: false
+        });
+        if (handles && handles[0]) {
+          const file = await handles[0].getFile();
+          this.importJSON(file);
+          return;
+        }
+      }
+    } catch (e) {
+      // AbortError = користувач скасував
+      if (e && e.name === 'AbortError') return;
+      console.warn('[import] showOpenFilePicker', e);
+    }
+
+    // 2) Класичний input (браузер + більшість Telegram WebView)
+    let inp = document.getElementById('importFile');
+    if (!inp) {
+      inp = document.createElement('input');
+      inp.type = 'file';
+      inp.id = 'importFile';
+      inp.accept = 'application/json,.json,text/json';
+      inp.style.cssText = 'position:fixed;left:-9999px;width:1px;height:1px;opacity:0';
+      document.body.appendChild(inp);
+      inp.addEventListener('change', (e) => {
+        const f = e.target.files && e.target.files[0];
+        if (f) this.importJSON(f);
+        e.target.value = '';
+      });
+    } else {
+      inp.value = '';
+      inp.setAttribute('accept', 'application/json,.json,text/json');
+    }
+    // Важливо для iOS/Telegram: клік синхронно з user gesture
+    try {
+      inp.click();
+    } catch (e2) {
+      Toast.show('Не вдалося відкрити вибір файлу', 'err');
+    }
+  },
+
   importJSON(fileOrText) {
     const applyData = (raw) => {
       try {
@@ -256,13 +308,6 @@ const StorageManager = {
     }
   },
 
-  /** Імпорт через діалог вставки JSON (надійно в Telegram Mini App) */
-  importJSONPaste() {
-    Modal.prompt('Вставте JSON експорту', '', (v) => {
-      if (v == null || !String(v).trim()) return;
-      this.importJSON(String(v).trim());
-    });
-  },
 
   clear() {
     localStorage.removeItem(STORAGE_KEY);

@@ -318,11 +318,11 @@ const Views = {
       </div>
       <div class="card"><div class="ct">Дані</div>
         <div class="fa">
-          <button class="btn btn-s" data-action="export">Експорт JSON</button>
-          <button class="btn btn-s" data-action="import-trigger">Import JSON</button>
-          <button class="btn btn-s" data-action="import-paste">Вставити JSON</button>
-          <input type="file" id="importFile" accept=".json" style="display:none">
-          <button class="btn btn-s" data-action="print">Print</button>
+          <div class="data-io glass-io">
+            <button type="button" class="btn btn-p data-io-btn" data-action="export">Експорт JSON</button>
+            <button type="button" class="btn btn-s data-io-btn" data-action="import-trigger">Імпорт JSON</button>
+            <input type="file" id="importFile" accept="application/json,.json,text/json" style="position:fixed;left:-9999px;width:1px;height:1px;opacity:0" tabindex="-1" aria-hidden="true">
+          </div>
           <button class="btn btn-d" data-action="reset-all">Скинути все</button>
         </div>
       </div>

@@ -357,17 +357,9 @@ const App = {
       if (action === 'toggle-rp') return document.getElementById('rightPanel').classList.toggle('force');
       if (action === 'export') return StorageManager.exportJSON();
       if (action === 'import-trigger') {
-        // TMA: спочатку спроба file input, плюс fallback вставка
-        const inp = document.getElementById('importFile');
-        if (inp) {
-          inp.value = '';
-          inp.setAttribute('accept', 'application/json,.json,text/plain,*/*');
-          inp.click();
-        }
+        StorageManager.pickAndImportJSON();
         return;
       }
-      if (action === 'import-paste') return StorageManager.importJSONPaste();
-      if (action === 'print') return window.print();
       if (action === 'reset-all') return Modal.confirm('Скинути всі дані до демо?', () => { StorageManager.clear(); App.applyBranding(); App.navigate('dashboard'); Toast.show('Скинуто', 'ok'); });
       if (action === 'save-settings') return Actions.saveSettings();
       if (action === 'close-modal') return Modal.close();
