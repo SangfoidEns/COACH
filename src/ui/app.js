@@ -345,6 +345,13 @@ const App = {
         }
         return;
       }
+      if (action === 'set-draw-color') {
+        const col = t.dataset.color || '#f1c40f';
+        Store.get().activeBoard.drawColor = col;
+        try { BoardEngine.renderToolbar(); } catch (_) {}
+        Toast.show('Колір стрілки', 'ok');
+        return;
+      }
       if (action === 'exit-board') {
         App.navigate('dashboard');
         return;

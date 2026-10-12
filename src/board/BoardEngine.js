@@ -76,18 +76,44 @@ const BoardEngine = {
      World: x,y in 0..1 relative to full pitch
      Screen: convert via container rect + camera
   */
+  /**
+   * Екран → світ 0..1.
+   * Використовуємо getBoundingClientRect() саме #fieldStage (після CSS transform),
+   * щоб стрілки/дотик збігалися з візуальним газоном при будь-якому zoom/pan.
+   */
   screenToWorld(clientX, clientY) {
-    const c = document.getElementById('fieldContainer');
-    if (!c) return { x: 0.5, y: 0.5 };
-    const r = c.getBoundingClientRect();
-    const z = this.camera.zoom || 1;
-    // Нормалізовані координати в контейнері (0..1)
-    let lx = (clientX - r.left) / Math.max(1, r.width);
-    let ly = (clientY - r.top) / Math.max(1, r.height);
-    // Інверсія camera: stage scale+translate від центру
-    const wx = (lx - 0.5) / z + 0.5 + (this.camera.x || 0);
-    const wy = (ly - 0.5) / z + 0.5 + (this.camera.y || 0);
+    const stage = document.getElementById('fieldStage') || document.getElementById('fieldContainer');
+    if (!stage) return { x: 0.5, y: 0.5 };
+    const r = stage.getBoundingClientRect();
+    const w = Math.max(1, r.width);
+    const h = Math.max(1, r.height);
+    const wx = (clientX - r.left) / w;
+    const wy = (clientY - r.top) / h;
     return { x: clamp(wx, -0.02, 1.02), y: clamp(wy, -0.02, 1.02) };
+  },
+
+  /** Прив'язати старт стрілки до центру найближчої фішки / м'яча */
+  snapToToken(wx, wy, maxDist) {
+    maxDist = maxDist == null ? 0.045 : maxDist;
+    const s = Store.get();
+    let best = null, bestD = maxDist;
+    (s.activeBoard.objects || []).forEach(o => {
+      if (!['player', 'opponent', 'ball'].includes(o.type)) return;
+      const d = Math.hypot((o.x || 0) - wx, (o.y || 0) - wy);
+      if (d < bestD) { bestD = d; best = o; }
+    });
+    return best ? { x: best.x, y: best.y, token: best } : { x: wx, y: wy, token: null };
+  },
+
+  strokeColorFor(type, explicit) {
+    if (explicit) return explicit;
+    const palette = (Store.get().activeBoard && Store.get().activeBoard.drawColor) || null;
+    if (palette) return palette;
+    const map = {
+      pass: '#3498db', run: '#f1c40f', dribble: '#9b59b6',
+      shot: '#e67e22', press: '#e74c3c', arrow: '#ecf0f1', arrowDash: '#95a5a6'
+    };
+    return map[type] || '#f1c40f';
   },
 
   worldToScreenPct(wx, wy) {
@@ -269,16 +295,22 @@ const BoardEngine = {
 
     // Tool actions
     if (tool === 'player' || tool === 'opponent') {
-      const num = s.activeBoard.objects.filter(o => o.type === 'player' || o.type === 'opponent').length + 1;
       const pp = this.clampWorld(world.x, world.y);
-      s.activeBoard.objects.push({
-        id: uid(), type: tool === 'opponent' ? 'opponent' : 'player',
-        x: pp.x, y: pp.y, number: num, label: '',
-        team: tool === 'opponent' ? 'opp' : 'own', playerId: null,
-        rotation: 0, locked: false, visible: true
-      });
-      this.pushHistory();
-      this.render();
+      if (tool === 'opponent') {
+        const num = s.activeBoard.objects.filter(o => o.type === 'opponent').length + 1;
+        s.activeBoard.objects.push({
+          id: uid(), type: 'opponent',
+          x: pp.x, y: pp.y, number: num, label: '',
+          team: 'opp', playerId: null,
+          rotation: 0, locked: false, visible: true
+        });
+        this.pushHistory();
+        this.render();
+        try { TelegramManager.haptic('medium'); } catch (_) {}
+        return;
+      }
+      // Власна команда — вибір зі складу
+      this.openRosterPicker(pp.x, pp.y);
       return;
     }
 
@@ -317,7 +349,10 @@ const BoardEngine = {
 
     if (['arrow', 'arrowDash', 'pass', 'run', 'dribble', 'press', 'shot', 'zone', 'circle', 'ellipse', 'freehand'].includes(tool)) {
       this.drawing = true;
-      this.startPos = world;
+      const isShape = ['zone', 'circle', 'ellipse', 'freehand'].includes(tool);
+      const snap = isShape ? { x: world.x, y: world.y, token: null } : this.snapToToken(world.x, world.y);
+      this.startPos = { x: snap.x, y: snap.y };
+      this._snapToken = snap.token || null;
       this.activePointerId = e.pointerId;
       try {
         const c = document.getElementById('fieldContainer');
@@ -463,7 +498,8 @@ const BoardEngine = {
         s.activeBoard.objects.push({
           id: uid(), type: tool,
           x: this.startPos.x, y: this.startPos.y,
-          x2: world.x, y2: world.y,
+          x2: this.clampWorld(world.x, world.y).x, y2: this.clampWorld(world.x, world.y).y,
+          color: this.strokeColorFor(tool),
           locked: false, visible: true
         });
         this.pushHistory();
@@ -1003,10 +1039,25 @@ const BoardEngine = {
         html += `<div class="eq bib" data-id="${o.id}" style="${L};width:${m.equip*0.7}px;height:${m.equip*0.55}px;background:#1abc9c;border-radius:4px;opacity:0.85" title="Манішка"></div>`;
         return;
       }
-      const isGk = o.number === 1;
+      const isGk = o.number === 1 || (o.team === 'own' && (() => {
+        const pl = Store.get().players.find(p => p.id === o.playerId);
+        return pl && pl.position === 'GK';
+      })());
       const cls = 'pt ' + (o.team === 'opp' ? 'opp' : (isGk ? 'gk' : 'own')) + (sel === o.id ? ' sel' : '');
+      let readiness = o.readiness;
+      if (readiness == null && o.playerId) {
+        const pl = Store.get().players.find(p => p.id === o.playerId);
+        if (pl) readiness = pl.readiness != null ? pl.readiness : pl.condition;
+      }
+      const ringColor = readiness == null ? 'transparent'
+        : readiness >= 80 ? '#2ecc71' : readiness >= 50 ? '#f1c40f' : '#e74c3c';
+      const ring = readiness != null
+        ? `<svg class="pt-ring" viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="16" fill="none" stroke="rgba(0,0,0,0.35)" stroke-width="3"/><circle cx="18" cy="18" r="16" fill="none" stroke="${ringColor}" stroke-width="3" stroke-dasharray="${(readiness/100)*100.5} 100.5" stroke-linecap="round" transform="rotate(-90 18 18)"/></svg>`
+        : '';
+      const titleName = o.label || ('#' + (o.number || ''));
+      const titleExtra = readiness != null ? ` · готовність ${readiness}%` : '';
       const label = o.label ? `<span class="tn">${sanitize(o.label)}</span>` : '';
-      html += `<div class="${cls}" data-id="${o.id}" style="left:${pct.left}%;top:${pct.top}%;width:${m.player}px;height:${m.player}px;font-size:${m.font}px" title="${sanitize(o.label || '#' + o.number)}">${o.number || ''}${label}</div>`;
+      html += `<div class="${cls}" data-id="${o.id}" style="left:${pct.left}%;top:${pct.top}%;width:${m.player}px;height:${m.player}px;font-size:${m.font}px" title="${sanitize(titleName + titleExtra)}">${ring}<span class="pt-num">${o.number || ''}</span>${label}</div>`;
     });
     layer.innerHTML = html;
     // Re-bind dblclick / contextmenu without inline handlers
@@ -1053,9 +1104,9 @@ const BoardEngine = {
 
     s.activeBoard.objects.forEach(o => {
       if (['arrow', 'arrowDash', 'pass', 'run', 'dribble', 'press', 'shot'].includes(o.type) && o.x2 != null) {
-        let col = '#f1c40f', mk = 'ah', dash = '', sw = 3;
-        if (o.type === 'pass') { col = '#3498db'; mk = 'ahb'; }
-        else if (o.type === 'press') { col = '#e74c3c'; mk = 'ahr'; }
+        let col = o.color || this.strokeColorFor(o.type), mk = 'ah', dash = '', sw = 3;
+        if (o.type === 'pass') { col = o.color || '#3498db'; mk = 'ahb'; }
+        else if (o.type === 'press') { col = o.color || '#e74c3c'; mk = 'ahr'; }
         else if (o.type === 'run') { col = '#2ecc71'; mk = 'ahg'; dash = 'stroke-dasharray="10,6"'; }
         else if (o.type === 'dribble') { col = '#9b59b6'; mk = 'ah'; dash = 'stroke-dasharray="4,4"'; }
         else if (o.type === 'shot') { col = '#fff'; mk = 'ahw'; sw = 4; }
@@ -1140,12 +1191,21 @@ const BoardEngine = {
         <button class="tb ${tool==='ball'?'on':''}" data-tool="ball" title="М\'яч">⚽</button>
       </div>
       <div class="tg">
-        <button class="tb ${tool==='pass'?'on':''}" data-tool="pass" title="Передача">⇒</button>
-        <button class="tb ${tool==='run'?'on':''}" data-tool="run" title="Рух">⇢</button>
+        <button class="tb ${tool==='pass'?'on':''}" data-tool="pass" title="Передача (пас)">⇒</button>
+        <button class="tb ${tool==='run'?'on':''}" data-tool="run" title="Рух без м'яча">⇢</button>
         <button class="tb ${tool==='dribble'?'on':''}" data-tool="dribble" title="Ведення">∿</button>
         <button class="tb ${tool==='shot'?'on':''}" data-tool="shot" title="Удар">⚡</button>
         <button class="tb ${tool==='press'?'on':''}" data-tool="press" title="Пресинг">⬇</button>
         <button class="tb ${tool==='arrow'?'on':''}" data-tool="arrow" title="Стрілка">→</button>
+      </div>
+      <div class="tg" title="Колір стрілки">
+        <button type="button" class="tb color-swatch ${(Store.get().activeBoard.drawColor||'')==='#ecf0f1'?'on':''}" data-action="set-draw-color" data-color="#ecf0f1" title="Білий" style="background:#ecf0f1"></button>
+        <button type="button" class="tb color-swatch ${(Store.get().activeBoard.drawColor||'')==='#3498db'?'on':''}" data-action="set-draw-color" data-color="#3498db" title="Блакитний (пас)" style="background:#3498db"></button>
+        <button type="button" class="tb color-swatch ${(Store.get().activeBoard.drawColor||'')==='#2ecc71'?'on':''}" data-action="set-draw-color" data-color="#2ecc71" title="Зелений" style="background:#2ecc71"></button>
+        <button type="button" class="tb color-swatch ${(Store.get().activeBoard.drawColor||'')==='#f1c40f'?'on':''}" data-action="set-draw-color" data-color="#f1c40f" title="Жовтий (рух)" style="background:#f1c40f"></button>
+        <button type="button" class="tb color-swatch ${(Store.get().activeBoard.drawColor||'')==='#e67e22'?'on':''}" data-action="set-draw-color" data-color="#e67e22" title="Помаранчевий" style="background:#e67e22"></button>
+        <button type="button" class="tb color-swatch ${(Store.get().activeBoard.drawColor||'')==='#e74c3c'?'on':''}" data-action="set-draw-color" data-color="#e74c3c" title="Червоний (пресинг)" style="background:#e74c3c"></button>
+        <button type="button" class="tb color-swatch ${(Store.get().activeBoard.drawColor||'')==='#9b59b6'?'on':''}" data-action="set-draw-color" data-color="#9b59b6" title="Фіолетовий (ведення)" style="background:#9b59b6"></button>
       </div>
       <div class="tg">
         <button class="tb ${tool==='zone'?'on':''}" data-tool="zone" title="Зона (прямокутник)">▢</button>
