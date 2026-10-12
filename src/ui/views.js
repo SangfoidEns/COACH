@@ -320,6 +320,7 @@ const Views = {
         <div class="fa">
           <button class="btn btn-s" data-action="export">Експорт JSON</button>
           <button class="btn btn-s" data-action="import-trigger">Import JSON</button>
+          <button class="btn btn-s" data-action="import-paste">Вставити JSON</button>
           <input type="file" id="importFile" accept=".json" style="display:none">
           <button class="btn btn-s" data-action="print">Print</button>
           <button class="btn btn-d" data-action="reset-all">Скинути все</button>

@@ -1424,3 +1424,53 @@ body.mode-board-focus #boardToolbar.btb {
   min-height: 44px !important;
   flex: 0 0 auto;
 }
+
+/* Бейджі позиції / статусу на фішках */
+.pt-pos {
+  position: absolute;
+  bottom: -2px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: #fff;
+  background: rgba(0,0,0,0.55);
+  padding: 0 3px;
+  border-radius: 3px;
+  line-height: 1.2;
+  z-index: 2;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.pt-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  font-size: 8px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3;
+  pointer-events: none;
+  border: 1px solid rgba(255,255,255,0.5);
+}
+.pt-inj { background: #e74c3c; color: #fff; }
+.pt-res { background: #7f8c8d; color: #fff; font-size: 7px; }
+.pt.injured { box-shadow: 0 0 0 2px #e74c3c !important; opacity: 0.92; }
+.pt.reserve { box-shadow: 0 0 0 2px #95a5a6 !important; }
+
+/* Стабільна панель дошки — низ по центру за замовчуванням */
+body.mode-board-focus #boardToolbar.btb {
+  z-index: 250 !important;
+}
+body.mode-board-focus #boardToolbar.btb:not([style*="top:"]) {
+  left: 50% !important;
+  bottom: max(12px, env(safe-area-inset-bottom, 0px)) !important;
+  top: auto !important;
+  transform: translateX(-50%) !important;
+}

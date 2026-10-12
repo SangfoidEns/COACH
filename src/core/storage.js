@@ -181,24 +181,87 @@ const StorageManager = {
     Toast.show('Експортовано', 'ok');
   },
 
-  importJSON(file) {
-    const reader = new FileReader();
-    reader.onload = ev => {
+  importJSON(fileOrText) {
+    const applyData = (raw) => {
       try {
-        const data = JSON.parse(ev.target.result);
-        if (!data || typeof data !== 'object') throw new Error('Невірний формат');
+        const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        if (!data || typeof data !== 'object') throw new Error('Невірний формат JSON');
+        // мінімальна валідація структури експорту
+        if (!data.players && !data.activeBoard && !data.schemaVersion && !data.trainings) {
+          throw new Error('Файл не схожий на експорт МЕТАЛІСТ ШТУТГАРТ');
+        }
         this.createBackup();
         const migrated = this.migrate(data, data.schemaVersion || 1);
         Store.set(migrated);
         this.save();
-        App.renderCurrent();
+        // Telegram CloudStorage (якщо є)
+        try {
+          if (typeof TelegramManager !== 'undefined' && TelegramManager.tg && TelegramManager.tg.CloudStorage) {
+            const payload = JSON.stringify(Store.get());
+            // обмеження CloudStorage — зберігаємо лише ключ-маркер
+            TelegramManager.tg.CloudStorage.setItem('ms_last_import', String(Date.now()), () => {});
+          }
+        } catch (_) {}
+        try { App.applyBranding(); } catch (_) {}
+        try { App.renderCurrent(); } catch (_) {}
         Toast.show('Імпортовано успішно', 'ok');
+        return true;
       } catch (e) {
-        ErrorManager.log('import', e);
-        Toast.show('Помилка імпорту: ' + e.message, 'err');
+        try { ErrorManager.log('import', e); } catch (_) {}
+        Toast.show('Помилка імпорту: ' + (e.message || e), 'err');
+        return false;
       }
     };
-    reader.readAsText(file);
+
+    // Рядок JSON напряму (вставка / TMA)
+    if (typeof fileOrText === 'string') {
+      applyData(fileOrText);
+      return;
+    }
+    if (!fileOrText) {
+      Toast.show('Файл не вибрано', 'err');
+      return;
+    }
+
+    // File / Blob
+    const reader = new FileReader();
+    reader.onerror = () => Toast.show('Не вдалося прочитати файл', 'err');
+    reader.onload = ev => {
+      const text = ev.target && ev.target.result;
+      if (text == null || text === '') {
+        Toast.show('Порожній файл', 'err');
+        return;
+      }
+      applyData(String(text));
+    };
+    try {
+      reader.readAsText(fileOrText, 'UTF-8');
+    } catch (e) {
+      // Fallback: arrayBuffer → decode
+      try {
+        const r2 = new FileReader();
+        r2.onload = ev2 => {
+          try {
+            const buf = ev2.target.result;
+            const text = new TextDecoder('utf-8').decode(buf);
+            applyData(text);
+          } catch (e2) {
+            Toast.show('Помилка імпорту: ' + e2.message, 'err');
+          }
+        };
+        r2.readAsArrayBuffer(fileOrText);
+      } catch (e3) {
+        Toast.show('Імпорт недоступний у цьому середовищі', 'err');
+      }
+    }
+  },
+
+  /** Імпорт через діалог вставки JSON (надійно в Telegram Mini App) */
+  importJSONPaste() {
+    Modal.prompt('Вставте JSON експорту', '', (v) => {
+      if (v == null || !String(v).trim()) return;
+      this.importJSON(String(v).trim());
+    });
   },
 
   clear() {

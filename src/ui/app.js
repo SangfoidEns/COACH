@@ -103,19 +103,79 @@ const App = {
 
 
   /** Перетягування панелі інструментів дошки (не малює на canvas) */
+  applyToolbarDefaultPos(tb) {
+    tb.style.left = '50%';
+    tb.style.top = 'auto';
+    tb.style.right = 'auto';
+    tb.style.bottom = 'max(12px, env(safe-area-inset-bottom, 0px))';
+    tb.style.transform = 'translateX(-50%)';
+  },
+
+  clampToolbarPos(tb, left, top) {
+    const w = tb.offsetWidth || 280;
+    const h = tb.offsetHeight || 80;
+    const maxL = Math.max(4, window.innerWidth - w - 4);
+    const maxT = Math.max(4, window.innerHeight - h - 4);
+    // не вище safe top (TG header)
+    const minT = 8;
+    return {
+      left: Math.max(4, Math.min(maxL, left)),
+      top: Math.max(minT, Math.min(maxT, top))
+    };
+  },
+
+  restoreToolbarPos(tb) {
+    try {
+      if (localStorage.getItem('ms_btb_locked') === '1') tb.classList.add('btb-locked');
+      const raw = localStorage.getItem('ms_btb_pos');
+      if (!raw) { this.applyToolbarDefaultPos(tb); return; }
+      const pos = JSON.parse(raw);
+      // відносні частки viewport (0..1) — стабільно при зміні розміру
+      if (pos && typeof pos.rx === 'number' && typeof pos.ry === 'number') {
+        const left = pos.rx * window.innerWidth;
+        const top = pos.ry * window.innerHeight;
+        const c = this.clampToolbarPos(tb, left, top);
+        tb.style.left = c.left + 'px';
+        tb.style.top = c.top + 'px';
+        tb.style.right = 'auto';
+        tb.style.bottom = 'auto';
+        tb.style.transform = 'none';
+        return;
+      }
+      // legacy absolute px
+      if (pos && typeof pos.left === 'number') {
+        const c = this.clampToolbarPos(tb, pos.left, pos.top || 0);
+        tb.style.left = c.left + 'px';
+        tb.style.top = c.top + 'px';
+        tb.style.right = 'auto';
+        tb.style.bottom = 'auto';
+        tb.style.transform = 'none';
+        return;
+      }
+    } catch (_) {}
+    this.applyToolbarDefaultPos(tb);
+  },
+
   initBoardToolbarDrag() {
     const tb = document.getElementById('boardToolbar');
-    if (!tb || tb.dataset.dragBound) return;
+    if (!tb) return;
+    // Після renderToolbar innerHTML зникає — відновлюємо хендл і позицію
+    let handle = tb.querySelector('.btb-drag-handle');
+    if (!handle) {
+      handle = document.createElement('div');
+      handle.className = 'btb-drag-handle';
+      handle.title = 'Перетягніть панель';
+      handle.innerHTML = '⋮⋮';
+      tb.insertBefore(handle, tb.firstChild);
+    }
+    this.restoreToolbarPos(tb);
+    if (tb.dataset.dragBound) return;
     tb.dataset.dragBound = '1';
     let dragging = false, ox = 0, oy = 0;
-    const handle = document.createElement('div');
-    handle.className = 'btb-drag-handle';
-    handle.title = 'Перетягніть панель';
-    handle.innerHTML = '⋮⋮';
-    tb.insertBefore(handle, tb.firstChild);
     const onDown = (e) => {
       if (tb.classList.contains('btb-locked')) return;
       if (e.target.closest('button, select, input')) return;
+      if (!e.target.closest('.btb-drag-handle') && e.target !== handle) return;
       dragging = true;
       const r = tb.getBoundingClientRect();
       ox = (e.clientX != null ? e.clientX : 0) - r.left;
@@ -129,14 +189,9 @@ const App = {
       if (!dragging) return;
       e.preventDefault();
       e.stopPropagation();
-      let left = e.clientX - ox;
-      let top = e.clientY - oy;
-      const maxL = window.innerWidth - tb.offsetWidth - 4;
-      const maxT = window.innerHeight - tb.offsetHeight - 4;
-      left = Math.max(4, Math.min(maxL, left));
-      top = Math.max(4, Math.min(maxT, top));
-      tb.style.left = left + 'px';
-      tb.style.top = top + 'px';
+      const c = this.clampToolbarPos(tb, e.clientX - ox, e.clientY - oy);
+      tb.style.left = c.left + 'px';
+      tb.style.top = c.top + 'px';
       tb.style.right = 'auto';
       tb.style.bottom = 'auto';
       tb.style.transform = 'none';
@@ -146,33 +201,21 @@ const App = {
       dragging = false;
       tb.classList.remove('btb-dragging');
       try {
+        const left = parseFloat(tb.style.left) || 0;
+        const top = parseFloat(tb.style.top) || 0;
         localStorage.setItem('ms_btb_pos', JSON.stringify({
-          left: parseFloat(tb.style.left) || 0,
-          top: parseFloat(tb.style.top) || 0
+          rx: left / Math.max(1, window.innerWidth),
+          ry: top / Math.max(1, window.innerHeight)
         }));
       } catch (_) {}
     };
-    try {
-      if (localStorage.getItem('ms_btb_locked') === '1') tb.classList.add('btb-locked');
-      const pos = JSON.parse(localStorage.getItem('ms_btb_pos') || 'null');
-      if (pos && typeof pos.left === 'number') {
-        tb.style.left = pos.left + 'px';
-        tb.style.top = pos.top + 'px';
-        tb.style.transform = 'none';
-        tb.style.right = 'auto';
-        tb.style.bottom = 'auto';
-      } else {
-        /* за замовчуванням — низ по центру, не перекриває поле зверху */
-        tb.style.left = '50%';
-        tb.style.top = 'auto';
-        tb.style.bottom = 'max(16px, env(safe-area-inset-bottom, 0px))';
-        tb.style.transform = 'translateX(-50%)';
-      }
-    } catch (_) {}
     handle.addEventListener('pointerdown', onDown);
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onUp);
+    window.addEventListener('resize', () => {
+      if (document.body.classList.contains('mode-board-focus')) this.restoreToolbarPos(tb);
+    });
   },
 
   navigate(view) {
@@ -313,7 +356,17 @@ const App = {
       if (action === 'new-event') return Actions.newEvent();
       if (action === 'toggle-rp') return document.getElementById('rightPanel').classList.toggle('force');
       if (action === 'export') return StorageManager.exportJSON();
-      if (action === 'import-trigger') return document.getElementById('importFile')?.click();
+      if (action === 'import-trigger') {
+        // TMA: спочатку спроба file input, плюс fallback вставка
+        const inp = document.getElementById('importFile');
+        if (inp) {
+          inp.value = '';
+          inp.setAttribute('accept', 'application/json,.json,text/plain,*/*');
+          inp.click();
+        }
+        return;
+      }
+      if (action === 'import-paste') return StorageManager.importJSONPaste();
       if (action === 'print') return window.print();
       if (action === 'reset-all') return Modal.confirm('Скинути всі дані до демо?', () => { StorageManager.clear(); App.applyBranding(); App.navigate('dashboard'); Toast.show('Скинуто', 'ok'); });
       if (action === 'save-settings') return Actions.saveSettings();

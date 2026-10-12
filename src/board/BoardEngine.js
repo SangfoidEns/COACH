@@ -686,16 +686,46 @@ const BoardEngine = {
     Toast.show('#' + p.number + ' ' + p.firstName + ' ' + p.lastName + ' · ' + readiness + '%', 'ok');
   },
 
-  applyScheme(name) {
+  applyScheme(name, forceTeam) {
     const scheme = SCHEMES[name];
     if (!scheme) return;
     const s = Store.get();
-    s.activeBoard.objects = s.activeBoard.objects.filter(o => o.type !== 'player' && o.type !== 'opponent');
+    const tool = s.activeBoard.tool || 'select';
+    // Режим суперника або явний forceTeam
+    const asOpp = forceTeam === 'opp' || forceTeam === 'opponent' || tool === 'opponent';
+    if (asOpp) {
+      // прибрати лише суперників, свою команду залишити
+      s.activeBoard.objects = s.activeBoard.objects.filter(o => o.type !== 'opponent');
+      scheme.forEach(([num, x, y], i) => {
+        // дзеркало по вертикалі (атака назустріч)
+        const p = this.clampWorld(x, 1 - y);
+        s.activeBoard.objects.push({
+          id: uid(), type: 'opponent', x: p.x, y: p.y,
+          number: i + 1, // автонумерація суперника з 1
+          label: '', team: 'opp', playerId: null,
+          rotation: 0, locked: false, visible: true
+        });
+      });
+      this.pushHistory();
+      this.render();
+      Toast.show('Суперник: схема ' + name + ' (дзеркало)', 'ok');
+      return;
+    }
+    // Своя команда — замінити своїх гравців
+    s.activeBoard.objects = s.activeBoard.objects.filter(o => o.type !== 'player');
     scheme.forEach(([num, x, y]) => {
       const p = this.clampWorld(x, y);
+      // спроба прив'язати гравця зі складу за номером
+      const roster = (s.players || []).find(pl => pl.number === num);
       s.activeBoard.objects.push({
         id: uid(), type: 'player', x: p.x, y: p.y, number: num,
-        label: '', team: 'own', playerId: null, rotation: 0, locked: false, visible: true
+        label: roster ? (roster.lastName || '') : '',
+        team: 'own',
+        playerId: roster ? roster.id : null,
+        readiness: roster ? (roster.readiness != null ? roster.readiness : roster.condition) : null,
+        position: roster ? roster.position : null,
+        status: roster ? roster.status : null,
+        rotation: 0, locked: false, visible: true
       });
     });
     this.pushHistory();
@@ -1123,10 +1153,22 @@ const BoardEngine = {
       const ring = readiness != null
         ? `<svg class="pt-ring" viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="16" fill="none" stroke="rgba(0,0,0,0.35)" stroke-width="3"/><circle cx="18" cy="18" r="16" fill="none" stroke="${ringColor}" stroke-width="3" stroke-dasharray="${(readiness/100)*100.5} 100.5" stroke-linecap="round" transform="rotate(-90 18 18)"/></svg>`
         : '';
-      const titleName = o.label || ('#' + (o.number || ''));
-      const titleExtra = readiness != null ? ` · готовність ${readiness}%` : '';
+      // Дані зі складу
+      let pl = null;
+      if (o.playerId) pl = Store.get().players.find(p => p.id === o.playerId);
+      const posCode = o.position || (pl && pl.position) || (o.team === 'opp' ? '' : '');
+      const status = o.status || (pl && pl.status) || '';
+      const isInjured = status === 'injured';
+      const isReserve = status === 'reserve' || (pl && pl.group === 'reserve');
+      const statusBadge = isInjured
+        ? '<span class="pt-badge pt-inj" title="Травма">✚</span>'
+        : (isReserve ? '<span class="pt-badge pt-res" title="Резерв">R</span>' : '');
+      const posBadge = posCode ? `<span class="pt-pos">${sanitize(posCode)}</span>` : '';
+      const titleName = (o.label || ('#' + (o.number || ''))) + (posCode ? ' · ' + posCode : '');
+      const titleExtra = (readiness != null ? ` · готовність ${readiness}%` : '') + (isInjured ? ' · ТРАВМА' : '') + (isReserve ? ' · резерв' : '');
       const label = o.label ? `<span class="tn">${sanitize(o.label)}</span>` : '';
-      html += `<div class="${cls}" data-id="${o.id}" style="left:${pct.left}%;top:${pct.top}%;width:${m.player}px;height:${m.player}px;font-size:${m.font}px" title="${sanitize(titleName + titleExtra)}">${ring}<span class="pt-num">${o.number || ''}</span>${label}</div>`;
+      const extraCls = (isInjured ? ' injured' : '') + (isReserve ? ' reserve' : '');
+      html += `<div class="${cls}${extraCls}" data-id="${o.id}" style="left:${pct.left}%;top:${pct.top}%;width:${m.player}px;height:${m.player}px;font-size:${m.font}px" title="${sanitize(titleName + titleExtra)}">${ring}${statusBadge}${posBadge}<span class="pt-num">${o.number || ''}</span>${label}</div>`;
     });
     layer.innerHTML = html;
     // Re-bind dblclick / contextmenu without inline handlers
