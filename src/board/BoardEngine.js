@@ -105,6 +105,22 @@ const BoardEngine = {
     return best ? { x: best.x, y: best.y, token: best } : { x: wx, y: wy, token: null };
   },
 
+  nextActionStep() {
+    const stepTypes = ['arrow', 'arrowDash', 'pass', 'run', 'dribble', 'press', 'shot'];
+    const steps = (Store.get().activeBoard.objects || [])
+      .filter(o => stepTypes.includes(o.type))
+      .map(o => o.step || 0);
+    return (steps.length ? Math.max(...steps) : 0) + 1;
+  },
+
+  getActionPathsSorted() {
+    const stepTypes = ['arrow', 'arrowDash', 'pass', 'run', 'dribble', 'press', 'shot'];
+    return (Store.get().activeBoard.objects || [])
+      .filter(o => o.x2 != null && stepTypes.includes(o.type))
+      .slice()
+      .sort((a, b) => (a.step || 999) - (b.step || 999) || 0);
+  },
+
   strokeColorFor(type, explicit) {
     if (explicit) return explicit;
     const palette = (Store.get().activeBoard && Store.get().activeBoard.drawColor) || null;
@@ -495,11 +511,16 @@ const BoardEngine = {
 
     if (['arrow', 'arrowDash', 'pass', 'run', 'dribble', 'press', 'shot'].includes(tool)) {
       if (Math.hypot(world.x - this.startPos.x, world.y - this.startPos.y) > 0.015) {
+        const stepTypes = ['arrow', 'arrowDash', 'pass', 'run', 'dribble', 'press', 'shot'];
+        const nextStep = s.activeBoard.objects.filter(o => stepTypes.includes(o.type) && o.step != null).length
+          ? Math.max(...s.activeBoard.objects.filter(o => stepTypes.includes(o.type) && o.step != null).map(o => o.step || 0)) + 1
+          : 1;
         s.activeBoard.objects.push({
           id: uid(), type: tool,
           x: this.startPos.x, y: this.startPos.y,
           x2: this.clampWorld(world.x, world.y).x, y2: this.clampWorld(world.x, world.y).y,
           color: this.strokeColorFor(tool),
+          step: nextStep,
           locked: false, visible: true
         });
         this.pushHistory();
@@ -813,7 +834,10 @@ const BoardEngine = {
   _buildAnimTracks() {
     const b = Store.get().activeBoard;
     const pathTypes = ['arrow', 'pass', 'run', 'dribble', 'arrowDash', 'shot', 'press'];
-    const paths = b.objects.filter(o => o.x2 != null && pathTypes.includes(o.type));
+    const paths = b.objects
+      .filter(o => o.x2 != null && pathTypes.includes(o.type))
+      .slice()
+      .sort((a, b) => (a.step || 999) - (b.step || 999));
     const movables = b.objects.filter(o => this._movableTypes().includes(o.type));
     const zones = b.objects.filter(o => ['zone', 'circle', 'polygon', 'rect'].includes(o.type));
     const tracks = [];
@@ -906,6 +930,66 @@ const BoardEngine = {
     return tracks;
   },
 
+  _applyStepOnly(stepNum) {
+    const b = Store.get().activeBoard;
+    // restore base
+    b.objects.forEach(o => {
+      if (o._ox != null) { o.x = o._ox; o.y = o._oy; }
+    });
+    if (!this._animTracks.length) {
+      b.objects.forEach(o => { o._ox = o.x; o._oy = o.y; });
+      this._animTracks = this._buildAnimTracks();
+    }
+    this._animTracks.forEach(tr => {
+      const obj = b.objects.find(o => o.id === tr.objId);
+      if (!obj) return;
+      const st = tr.step != null ? tr.step : ((tr.path && tr.path.step) || 0);
+      if (st < stepNum) {
+        obj.x = tr.x1; obj.y = tr.y1;
+      } else if (st === stepNum) {
+        // mid of step
+        obj.x = (tr.x0 + tr.x1) / 2; obj.y = (tr.y0 + tr.y1) / 2;
+      } else {
+        obj.x = tr.x0; obj.y = tr.y0;
+      }
+    });
+    this._updateTokenPositionsLive && this._updateTokenPositionsLive();
+    this.renderTokens();
+    const el = document.getElementById('stepInd');
+    if (el) el.textContent = 'Крок ' + stepNum;
+  },
+
+  animStepNext() {
+    const b = Store.get().activeBoard;
+    b.anim.playing = false;
+    if (!this._animTracks.length) {
+      b.objects.forEach(o => { o._ox = o.x; o._oy = o.y; });
+      this._animTracks = this._buildAnimTracks();
+    }
+    if (!this._animTracks.length) {
+      Toast.show('Немає кроків для показу', 'warn');
+      return;
+    }
+    const steps = [...new Set(this._animTracks.map(tr => tr.step != null ? tr.step : (tr.path && tr.path.step) || 0))].sort((a,b)=>a-b);
+    this._stepIdx = Math.min((this._stepIdx || 0) + 1, steps.length - 1);
+    this._applyStepOnly(steps[this._stepIdx]);
+    Toast.show('Крок ' + steps[this._stepIdx], 'ok');
+  },
+
+  animStepPrev() {
+    const b = Store.get().activeBoard;
+    b.anim.playing = false;
+    if (!this._animTracks.length) {
+      b.objects.forEach(o => { o._ox = o.x; o._oy = o.y; });
+      this._animTracks = this._buildAnimTracks();
+    }
+    if (!this._animTracks.length) return;
+    const steps = [...new Set(this._animTracks.map(tr => tr.step != null ? tr.step : (tr.path && tr.path.step) || 0))].sort((a,b)=>a-b);
+    this._stepIdx = Math.max((this._stepIdx || 0) - 1, 0);
+    this._applyStepOnly(steps[this._stepIdx]);
+    Toast.show('Крок ' + steps[this._stepIdx], 'ok');
+  },
+
   animPlay() {
     const b = Store.get().activeBoard;
     if (b.anim.playing) return;
@@ -919,17 +1003,23 @@ const BoardEngine = {
     }
     b.anim.playing = true;
     b.anim.frame = 0;
+    this._stepIdx = 0;
     this._animElapsed = 0;
     this._animStartTs = performance.now();
     this._animPausedAt = 0;
-    // послідовний старт треків зі зсувом
+    // Послідовність за step: кроки з одним step — паралельно, наступний step — після
+    const byStep = {};
+    this._animTracks.forEach(tr => {
+      const st = (tr.path && tr.path.step) || 0;
+      if (!byStep[st]) byStep[st] = [];
+      byStep[st].push(tr);
+    });
     let t0 = 0;
-    this._animTracks.forEach((tr, i) => {
-      tr.start = t0;
-      // паралельні групи: run одночасно, pass після
-      if (tr.kind === 'ball') t0 += tr.duration * 0.15;
-      else if (i > 0 && this._animTracks[i - 1].kind === tr.kind) t0 += 80;
-      else t0 += tr.duration * 0.25;
+    Object.keys(byStep).map(Number).sort((a, b) => a - b).forEach(st => {
+      const group = byStep[st];
+      const maxDur = Math.max(...group.map(tr => tr.duration), 400);
+      group.forEach(tr => { tr.start = t0; tr.step = st; });
+      t0 += maxDur * 0.92;
     });
     this._animTotal = Math.max(...this._animTracks.map(tr => tr.start + tr.duration), 1000);
     document.getElementById('playersLayer')?.classList.add('animating');
@@ -1223,6 +1313,11 @@ const BoardEngine = {
         else if (o.type === 'shot') { col = '#fff'; mk = 'ahw'; sw = 4; }
         else if (o.type === 'arrowDash') { dash = 'stroke-dasharray="8,6"'; }
         html += `<line x1="${tx(o.x)}" y1="${ty(o.y)}" x2="${tx(o.x2)}" y2="${ty(o.y2)}" stroke="${col}" stroke-width="${sw}" marker-end="url(#${mk})" ${dash}/>`;
+        if (o.step != null) {
+          const mx = (tx(o.x) + tx(o.x2)) / 2, my = (ty(o.y) + ty(o.y2)) / 2;
+          html += `<circle cx="${mx}" cy="${my}" r="11" fill="rgba(13,17,23,0.85)" stroke="${col}" stroke-width="1.5"/>`;
+          html += `<text x="${mx}" y="${my + 4}" text-anchor="middle" fill="#fff" font-size="11" font-weight="700" font-family="system-ui,sans-serif">${o.step}</text>`;
+        }
       } else if (o.type === 'zone') {
         if (o.shape === 'rect' || (!o.shape && o.w)) {
           html += `<rect x="${tx(o.x)}" y="${ty(o.y)}" width="${tx(o.w || 0)}" height="${ty(o.h || 0)}" fill="${o.fill || 'rgba(200,168,75,0.25)'}" stroke="#c8a84b" stroke-width="2" stroke-dasharray="6,4" opacity="${o.opacity || 0.4}"/>`;
@@ -1279,6 +1374,142 @@ const BoardEngine = {
     this.renderTokens();
     this.renderDrawings();
     this.updateZoomIndicator();
+  },
+
+
+  /** Захопити кадр дошки в canvas (для GIF) */
+  async _captureBoardFrame(w, h) {
+    const stage = document.getElementById('fieldStage') || document.getElementById('fieldContainer');
+    if (!stage) return null;
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#0a1f12';
+    ctx.fillRect(0, 0, w, h);
+    try {
+      // foreignObject SVG serialize of stage
+      const data = new XMLSerializer().serializeToString(stage);
+      // Prefer html2canvas-free approach: draw field SVG + tokens approx
+      const fieldSvg = document.getElementById('fieldSvg');
+      const drawSvg = document.getElementById('drawSvg');
+      if (fieldSvg) {
+        const xml = new XMLSerializer().serializeToString(fieldSvg);
+        const img = await this._svgToImage(xml, w, h);
+        if (img) ctx.drawImage(img, 0, 0, w, h);
+      }
+      if (drawSvg) {
+        const xml2 = new XMLSerializer().serializeToString(drawSvg);
+        const img2 = await this._svgToImage(xml2, w, h);
+        if (img2) ctx.drawImage(img2, 0, 0, w, h);
+      }
+      // tokens as circles
+      const s = Store.get();
+      const m = this.tokenMetrics();
+      (s.activeBoard.objects || []).forEach(o => {
+        if (!['player', 'opponent', 'ball'].includes(o.type)) return;
+        const px = (o.x || 0) * w, py = (o.y || 0) * h;
+        ctx.beginPath();
+        if (o.type === 'ball') {
+          ctx.fillStyle = '#fff';
+          ctx.arc(px, py, Math.max(4, m.ball / 2), 0, Math.PI * 2);
+        } else {
+          ctx.fillStyle = o.team === 'opp' ? '#e74c3c' : (o.number === 1 ? '#f1c40f' : '#2980b9');
+          ctx.arc(px, py, Math.max(6, m.player / 2), 0, Math.PI * 2);
+        }
+        ctx.fill();
+        if (o.type !== 'ball' && o.number != null) {
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 11px system-ui,sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(String(o.number), px, py);
+        }
+      });
+    } catch (e) {
+      console.warn('[gif frame]', e);
+    }
+    return ctx.getImageData(0, 0, w, h);
+  },
+
+  _svgToImage(svgXml, w, h) {
+    return new Promise(resolve => {
+      try {
+        const blob = new Blob([svgXml], { type: 'image/svg+xml;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+        img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+        img.src = url;
+      } catch (_) { resolve(null); }
+    });
+  },
+
+  async exportGif() {
+    Toast.show('Готуємо GIF…', 'ok');
+    const b = Store.get().activeBoard;
+    b.objects.forEach(o => { o._ox = o.x; o._oy = o.y; });
+    this._animTracks = this._buildAnimTracks();
+    if (!this._animTracks.length) {
+      Toast.show('Немає кроків для GIF. Намалюйте стрілки з кроками.', 'warn');
+      return;
+    }
+    const W = 320, H = 494; // ~68:105
+    const frames = [];
+    const steps = [...new Set(this._animTracks.map(tr => tr.step != null ? tr.step : (tr.path && tr.path.step) || 0))].sort((a,b)=>a-b);
+    // start frame
+    b.objects.forEach(o => { if (o._ox != null) { o.x = o._ox; o.y = o._oy; } });
+    this.renderTokens();
+    frames.push(await this._captureBoardFrame(W, H));
+    for (const st of steps) {
+      // end of each step
+      this._animTracks.forEach(tr => {
+        const obj = b.objects.find(o => o.id === tr.objId);
+        if (!obj) return;
+        const s = tr.step != null ? tr.step : ((tr.path && tr.path.step) || 0);
+        if (s <= st) { obj.x = tr.x1; obj.y = tr.y1; }
+        else { obj.x = tr.x0; obj.y = tr.y0; }
+      });
+      this.renderTokens();
+      await new Promise(r => requestAnimationFrame(r));
+      frames.push(await this._captureBoardFrame(W, H));
+    }
+    // restore
+    b.objects.forEach(o => {
+      if (o._ox != null) { o.x = o._ox; o.y = o._oy; delete o._ox; delete o._oy; }
+    });
+    this.renderTokens();
+
+    const valid = frames.filter(Boolean);
+    if (!valid.length) {
+      Toast.show('Не вдалося зняти кадри', 'err');
+      return;
+    }
+    try {
+      const blob = GifEncoder.encode(valid, W, H, 60); // 60 = delay in 1/100s
+      const file = new File([blob], 'metalist-tactics.gif', { type: 'image/gif' });
+      // Share / download
+      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: 'МЕТАЛІСТ ШТУТГАРТ', text: 'Тактична анімація' });
+        Toast.show('GIF надіслано', 'ok');
+      } else if (typeof TelegramManager !== 'undefined' && TelegramManager.tg && TelegramManager.tg.downloadFile) {
+        // not standard - fall through download
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = file.name; a.click();
+        URL.revokeObjectURL(url);
+        Toast.show('GIF збережено', 'ok');
+      } else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = file.name; a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+        Toast.show('GIF завантажено', 'ok');
+      }
+    } catch (e) {
+      console.error(e);
+      Toast.show('Помилка GIF: ' + (e.message || e), 'err');
+    }
   },
 
   renderToolbar() {
@@ -1355,11 +1586,15 @@ const BoardEngine = {
         <button class="tb" data-action="zoom-fit" title="Вписати поле">⊡</button>
         <button class="tb" data-action="zoom-in" title="Збільшити">+</button>
       </div>
-      <div class="tg">
+      <div class="tg" title="Анімація та кроки">
         <button class="tb" data-action="anim-play" title="Відтворити">▶</button>
         <button class="tb" data-action="anim-pause" title="Пауза">⏸</button>
         <button class="tb" data-action="anim-stop" title="Стоп">⏹</button>
+        <button class="tb" data-action="anim-step-prev" title="Попередній крок">⏮</button>
+        <button class="tb" data-action="anim-step-next" title="Наступний крок">⏭</button>
+        <span id="stepInd" class="step-ind" title="Поточний крок">—</span>
         <input type="range" id="animSpeed" min="0.25" max="2" step="0.25" value="1" style="width:50px" title="Швидкість">
+        <button class="tb" data-action="export-gif" title="Експорт GIF">GIF</button>
       </div>
       <div class="tg">
         <button class="tb" data-action="board-undo" title="Скасувати">↩</button>

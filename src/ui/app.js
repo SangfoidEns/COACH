@@ -419,6 +419,9 @@ const App = {
       if (action === 'board-redo') return BoardEngine.redo();
       if (action === 'board-clear') return BoardEngine.clear();
       if (action === 'board-save') return BoardEngine.saveBoard();
+      if (action === 'anim-step-prev') return BoardEngine.animStepPrev();
+      if (action === 'anim-step-next') return BoardEngine.animStepNext();
+      if (action === 'export-gif') return BoardEngine.exportGif();
       if (action === 'anim-play') return BoardEngine.animPlay();
       if (action === 'anim-pause') return BoardEngine.animPause();
       if (action === 'anim-stop') return BoardEngine.animStop();

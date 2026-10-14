@@ -1756,3 +1756,34 @@ html, body {
   backdrop-filter: blur(20px) saturate(160%);
   box-shadow: 0 24px 64px rgba(0,0,0,0.55);
 }
+
+
+/* ═══ iPhone safe-area: нижня навігація ═══ */
+.mn {
+  padding-bottom: calc(env(safe-area-inset-bottom, 16px) + 8px) !important;
+  padding-top: 6px !important;
+  z-index: 300 !important;
+  background: rgba(18, 22, 32, 0.92) !important;
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  border-top: 1px solid rgba(255,255,255,0.1);
+}
+@media (max-width: 768px) {
+  .main {
+    padding-bottom: calc(56px + env(safe-area-inset-bottom, 16px) + 8px) !important;
+  }
+}
+.step-ind {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  height: 28px;
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--club-accent);
+  background: rgba(0,0,0,0.35);
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.1);
+}

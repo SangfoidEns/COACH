@@ -13,6 +13,7 @@ const StorageManager = {
   },
 
   save() {
+    /* DATA INTEGRITY: never wipe keys on error */
     try {
       const s = Store.get();
       if (!s) return;
