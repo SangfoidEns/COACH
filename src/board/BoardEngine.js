@@ -1445,13 +1445,66 @@ const BoardEngine = {
     });
   },
 
+  async exportGifStatic() {
+    Toast.show('Знімок GIF…', 'ok');
+    const W = 340, H = 524;
+    this.renderTokens();
+    this.renderDrawings();
+    await new Promise(r => requestAnimationFrame(r));
+    const frame = await this._captureBoardFrame(W, H);
+    if (!frame) {
+      Toast.show('Не вдалося зняти поле', 'err');
+      return;
+    }
+    try {
+      const blob = GifEncoder.encode([frame], W, H, 100);
+      await this._shareOrDownloadBlob(blob, 'metalist-board-static.gif');
+    } catch (e) {
+      Toast.show('Помилка GIF: ' + (e.message || e), 'err');
+    }
+  },
+
+  async _shareOrDownloadBlob(blob, filename) {
+    const file = new File([blob], filename, { type: 'image/gif' });
+    try {
+      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: 'МЕТАЛІСТ ШТУТГАРТ', text: 'Тактична схема' });
+        Toast.show('GIF надіслано', 'ok');
+        return;
+      }
+    } catch (e) {
+      if (e && e.name === 'AbortError') return;
+    }
+    try {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+      Toast.show('GIF збережено', 'ok');
+    } catch (e2) {
+      // data URL fallback
+      const reader = new FileReader();
+      reader.onload = () => {
+        const a = document.createElement('a');
+        a.href = reader.result;
+        a.download = filename;
+        a.click();
+        Toast.show('GIF збережено', 'ok');
+      };
+      reader.readAsDataURL(blob);
+    }
+  },
+
   async exportGif() {
     Toast.show('Готуємо GIF…', 'ok');
     const b = Store.get().activeBoard;
     b.objects.forEach(o => { o._ox = o.x; o._oy = o.y; });
     this._animTracks = this._buildAnimTracks();
     if (!this._animTracks.length) {
-      Toast.show('Немає кроків для GIF. Намалюйте стрілки з кроками.', 'warn');
+      // Статичний GIF — поточна розстановка
+      await this.exportGifStatic();
       return;
     }
     const W = 320, H = 494; // ~68:105
@@ -1486,26 +1539,8 @@ const BoardEngine = {
       return;
     }
     try {
-      const blob = GifEncoder.encode(valid, W, H, 60); // 60 = delay in 1/100s
-      const file = new File([blob], 'metalist-tactics.gif', { type: 'image/gif' });
-      // Share / download
-      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-        await navigator.share({ files: [file], title: 'МЕТАЛІСТ ШТУТГАРТ', text: 'Тактична анімація' });
-        Toast.show('GIF надіслано', 'ok');
-      } else if (typeof TelegramManager !== 'undefined' && TelegramManager.tg && TelegramManager.tg.downloadFile) {
-        // not standard - fall through download
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url; a.download = file.name; a.click();
-        URL.revokeObjectURL(url);
-        Toast.show('GIF збережено', 'ok');
-      } else {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url; a.download = file.name; a.click();
-        setTimeout(() => URL.revokeObjectURL(url), 2000);
-        Toast.show('GIF завантажено', 'ok');
-      }
+      const blob = GifEncoder.encode(valid, W, H, 60);
+      await this._shareOrDownloadBlob(blob, 'metalist-tactics.gif');
     } catch (e) {
       console.error(e);
       Toast.show('Помилка GIF: ' + (e.message || e), 'err');
@@ -1594,7 +1629,8 @@ const BoardEngine = {
         <button class="tb" data-action="anim-step-next" title="Наступний крок">⏭</button>
         <span id="stepInd" class="step-ind" title="Поточний крок">—</span>
         <input type="range" id="animSpeed" min="0.25" max="2" step="0.25" value="1" style="width:50px" title="Швидкість">
-        <button class="tb" data-action="export-gif" title="Експорт GIF">GIF</button>
+        <button class="tb" data-action="export-gif" title="GIF анімований / статичний">GIF</button>
+        <button class="tb" data-action="export-gif-static" title="Статичний знімок GIF">📷</button>
       </div>
       <div class="tg">
         <button class="tb" data-action="board-undo" title="Скасувати">↩</button>

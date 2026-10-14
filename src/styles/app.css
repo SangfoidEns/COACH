@@ -1787,3 +1787,72 @@ html, body {
   border-radius: 8px;
   border: 1px solid rgba(255,255,255,0.1);
 }
+
+
+/* ═══ Header завжди видно (крім board focus) ═══ */
+body:not(.mode-board-focus):not(.board-only-mode) .header {
+  display: flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  z-index: 150;
+}
+
+/* ═══ Мобільний висувний сайдбар ═══ */
+.sb-toggle {
+  display: none;
+  margin-right: 6px;
+  min-width: 44px;
+  min-height: 44px;
+  font-size: 18px;
+}
+.sb-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 280;
+  backdrop-filter: blur(2px);
+}
+@media (max-width: 768px) {
+  .sb-toggle { display: inline-flex !important; align-items: center; justify-content: center; }
+  .app {
+    grid-template-columns: minmax(0, 1fr) 0 !important;
+  }
+  .app > .sidebar {
+    position: fixed !important;
+    top: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: min(300px, 86vw) !important;
+    max-width: 86vw !important;
+    z-index: 290 !important;
+    transform: translateX(105%);
+    transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+    box-shadow: -8px 0 32px rgba(0,0,0,0.4);
+    border-left: 1px solid rgba(255,255,255,0.1);
+    background: rgba(18, 22, 32, 0.96) !important;
+    backdrop-filter: blur(20px) saturate(160%);
+    display: flex !important;
+  }
+  body.sb-open .app > .sidebar {
+    transform: translateX(0);
+  }
+  .app > .sidebar .nav .nl {
+    display: block !important;
+  }
+}
+@media (min-width: 769px) {
+  body.sb-open .sb-backdrop { display: none; }
+}
+
+/* Desktop sidebar never clipped */
+@media (min-width: 769px) {
+  .app {
+    grid-template-columns: minmax(0, 1fr) minmax(180px, var(--sw)) !important;
+  }
+  .app > .sidebar {
+    position: relative !important;
+    transform: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}

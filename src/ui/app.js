@@ -23,6 +23,52 @@ const App = {
       }
     } catch (_) {}
     try { Toast.show('МЕТАЛІСТ ШТУТГАРТ — тренерська платформа', 'ok'); } catch (_) {}
+    try { this.initSwipeNav(); } catch (_) {}
+  },
+
+  initSwipeNav() {
+    const main = document.getElementById('main');
+    if (!main || main.dataset.swipeBound) return;
+    main.dataset.swipeBound = '1';
+    const order = ['dashboard', 'board', 'trainings', 'players', 'calendar'];
+    let sx = 0, sy = 0, tracking = false;
+    main.addEventListener('pointerdown', (e) => {
+      if (document.body.classList.contains('mode-board-focus')) return;
+      if (e.target.closest('.btb, button, a, input, select, textarea, .pt, .ball')) return;
+      tracking = true;
+      sx = e.clientX;
+      sy = e.clientY;
+    }, { passive: true });
+    main.addEventListener('pointerup', (e) => {
+      if (!tracking) return;
+      tracking = false;
+      if (document.body.classList.contains('mode-board-focus')) return;
+      const dx = e.clientX - sx;
+      const dy = e.clientY - sy;
+      if (Math.abs(dx) < 72 || Math.abs(dx) < Math.abs(dy) * 1.2) return;
+      const cur = this.currentView || 'dashboard';
+      const i = order.indexOf(cur);
+      if (i < 0) return;
+      if (dx < 0 && i < order.length - 1) this.navigate(order[i + 1]);
+      else if (dx > 0 && i > 0) this.navigate(order[i - 1]);
+    }, { passive: true });
+  },
+
+  toggleMobileSidebar(force) {
+    const open = force != null ? force : !document.body.classList.contains('sb-open');
+    document.body.classList.toggle('sb-open', open);
+    let backdrop = document.getElementById('sbBackdrop');
+    if (open) {
+      if (!backdrop) {
+        backdrop = document.createElement('div');
+        backdrop.id = 'sbBackdrop';
+        backdrop.className = 'sb-backdrop';
+        backdrop.addEventListener('click', () => this.toggleMobileSidebar(false));
+        document.body.appendChild(backdrop);
+      }
+    } else if (backdrop) {
+      backdrop.remove();
+    }
   },
 
   applyBranding() {
@@ -422,6 +468,8 @@ const App = {
       if (action === 'anim-step-prev') return BoardEngine.animStepPrev();
       if (action === 'anim-step-next') return BoardEngine.animStepNext();
       if (action === 'export-gif') return BoardEngine.exportGif();
+      if (action === 'export-gif-static') return BoardEngine.exportGifStatic();
+      if (action === 'toggle-sidebar') return App.toggleMobileSidebar();
       if (action === 'anim-play') return BoardEngine.animPlay();
       if (action === 'anim-pause') return BoardEngine.animPause();
       if (action === 'anim-stop') return BoardEngine.animStop();

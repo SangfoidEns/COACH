@@ -164,23 +164,204 @@ const StorageManager = {
     } catch (e) { ErrorManager.log('backup', e); }
   },
 
-  exportJSON() {
-    this.createBackup();
+  buildExportPayload() {
     const s = Store.get();
-    const payload = {
-      schemaVersion: SCHEMA_VERSION, exportedAt: new Date().toISOString(),
-      settings: s.settings, players: s.players, trainings: s.trainings,
-      exercises: s.exercises, boards: s.boards, calendar: s.calendar, matches: s.matches,
-      activeBoard: { objects: s.activeBoard.objects, fieldView: s.activeBoard.fieldView }
+    return {
+      schemaVersion: SCHEMA_VERSION,
+      exportedAt: new Date().toISOString(),
+      settings: s.settings,
+      players: s.players,
+      trainings: s.trainings,
+      exercises: s.exercises,
+      boards: s.boards,
+      calendar: s.calendar,
+      matches: s.matches,
+      diary: s.diary || [],
+      myExercises: s.myExercises || [],
+      animations: s.animations || [],
+      activeBoard: {
+        objects: (s.activeBoard && s.activeBoard.objects) || [],
+        fieldView: (s.activeBoard && s.activeBoard.fieldView) || 'full'
+      }
     };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'metalist_stuttgart_' + today() + '.json';
-    a.click();
-    URL.revokeObjectURL(a.href);
-    Toast.show('Експортовано', 'ok');
   },
+
+  async exportJSON() {
+    try {
+      this.createBackup();
+      const payload = this.buildExportPayload();
+      const text = JSON.stringify(payload, null, 2);
+      const filename = 'metalist_stuttgart_' + (typeof today === 'function' ? today() : new Date().toISOString().slice(0, 10)) + '.json';
+      const inTg = !!(typeof TelegramManager !== 'undefined' && TelegramManager.isTelegram);
+
+      // У Telegram / на мобільних — діалог вибору способу (найзручніше)
+      if (inTg || (window.matchMedia && window.matchMedia('(max-width: 900px)').matches) || !window.showSaveFilePicker) {
+        this._openExportChooser(text, filename);
+        return;
+      }
+
+      // Desktop Chromium: спроба «Зберегти як»
+      try {
+        if (typeof window.showSaveFilePicker === 'function') {
+          const handle = await window.showSaveFilePicker({
+            suggestedName: filename,
+            types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }]
+          });
+          const writable = await handle.createWritable();
+          await writable.write(text);
+          await writable.close();
+          Toast.show('Файл збережено', 'ok');
+          return;
+        }
+      } catch (e) {
+        if (e && e.name === 'AbortError') return;
+      }
+
+      this._openExportChooser(text, filename);
+    } catch (e) {
+      try { ErrorManager.log('export', e); } catch (_) {}
+      Toast.show('Помилка експорту: ' + (e.message || e), 'err');
+    }
+  },
+
+  _openExportChooser(text, filename) {
+    const sizeKb = Math.round(new Blob([text]).size / 1024);
+    const body = `
+      <p style="font-size:13px;color:var(--muted);margin:0 0 12px;line-height:1.45">
+        Експорт даних МЕТАЛІСТ ШТУТГАРТ · <strong>${sizeKb} КБ</strong><br>
+        У Telegram найнадійніше — <strong>скопіювати</strong> і зберегти в «Вибране» або надіслати собі в Saved Messages.
+      </p>
+      <div class="export-actions" style="display:flex;flex-direction:column;gap:8px">
+        <button type="button" class="btn btn-p" data-export-act="copy" style="min-height:48px;width:100%">📋 Скопіювати JSON у буфер</button>
+        <button type="button" class="btn btn-s" data-export-act="share" style="min-height:44px;width:100%">📤 Поділитися / Share</button>
+        <button type="button" class="btn btn-s" data-export-act="download" style="min-height:44px;width:100%">⬇️ Завантажити файл</button>
+        <button type="button" class="btn btn-s" data-export-act="show" style="min-height:44px;width:100%">👁 Показати текст (ручне копіювання)</button>
+      </div>
+      <textarea id="exportJsonTa" readonly
+        style="display:none;width:100%;height:160px;margin-top:12px;font-size:11px;font-family:ui-monospace,monospace;
+        background:rgba(0,0,0,0.35);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:10px;box-sizing:border-box"></textarea>
+      <p class="note-sm" style="margin-top:10px">Після копіювання: відкрийте Saved Messages у Telegram → вставте → збережіть як файл, або вставте назад через «Імпорт JSON».</p>
+    `;
+    Modal.open('Експорт JSON', body, [
+      { label: 'Закрити', cls: 'btn-s', action: 'cancel' }
+    ]);
+    const ta = () => document.getElementById('exportJsonTa');
+    setTimeout(() => {
+      document.querySelectorAll('[data-export-act]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const act = btn.getAttribute('data-export-act');
+          if (act === 'copy') {
+            const ok = await this._copyText(text);
+            if (ok) {
+              try { TelegramManager.haptic && TelegramManager.haptic('medium'); } catch (_) {}
+              Toast.show('Скопійовано! Вставте у Saved Messages', 'ok');
+            } else {
+              // fallback: show textarea
+              const el = ta();
+              if (el) {
+                el.style.display = 'block';
+                el.value = text;
+                el.focus();
+                el.select();
+              }
+              Toast.show('Виділіть текст і скопіюйте вручну', 'warn');
+            }
+          } else if (act === 'share') {
+            await this._shareExport(text, filename);
+          } else if (act === 'download') {
+            this._downloadExport(text, filename);
+          } else if (act === 'show') {
+            const el = ta();
+            if (el) {
+              el.style.display = 'block';
+              el.value = text;
+              el.focus();
+              el.select();
+              try { el.setSelectionRange(0, el.value.length); } catch (_) {}
+            }
+          }
+        });
+      });
+    }, 40);
+  },
+
+  async _copyText(text) {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch (_) {}
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      const ok = document.execCommand('copy');
+      ta.remove();
+      return !!ok;
+    } catch (_) {
+      return false;
+    }
+  },
+
+  async _shareExport(text, filename) {
+    try {
+      const file = new File([text], filename, { type: 'application/json' });
+      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: 'МЕТАЛІСТ ШТУТГАРТ', text: 'Експорт тренерських даних' });
+        Toast.show('Надіслано', 'ok');
+        return;
+      }
+      if (navigator.share) {
+        // Багато WebView не шарять довгий text — копіюємо і підказуємо
+        if (text.length > 40000) {
+          await this._copyText(text);
+          Toast.show('Файл великий: JSON скопійовано в буфер', 'ok');
+          return;
+        }
+        await navigator.share({ title: filename, text: text });
+        Toast.show('Надіслано', 'ok');
+        return;
+      }
+      Toast.show('Share недоступний — скористайтесь «Скопіювати»', 'warn');
+    } catch (e) {
+      if (e && e.name === 'AbortError') return;
+      Toast.show('Share не вдався — спробуйте скопіювати', 'warn');
+    }
+  },
+
+  _downloadExport(text, filename) {
+    try {
+      // data: надійніше в Telegram WebView за blob:
+      const dataUrl = 'data:application/json;charset=utf-8,' + encodeURIComponent(text);
+      const a = document.createElement('a');
+      a.href = dataUrl;
+      a.download = filename;
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      Toast.show('Завантаження… Якщо файл не з’явився — скопіюйте JSON', 'ok');
+      return;
+    } catch (_) {}
+    try {
+      const blob = new Blob([text], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 2500);
+      Toast.show('Завантаження…', 'ok');
+    } catch (e) {
+      Toast.show('Завантаження недоступне — скопіюйте JSON', 'err');
+    }
+  },
+
 
 
   /** Нативний вибір файлу: showOpenFilePicker → fallback input#importFile */
