@@ -1856,3 +1856,62 @@ body:not(.mode-board-focus):not(.board-only-mode) .header {
     max-width: 100% !important;
   }
 }
+
+/* Auth / RBAC */
+.auth-badge {
+  font-size: 11px;
+  color: var(--muted);
+  margin-left: 8px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  white-space: nowrap;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.auth-badge .auth-role {
+  color: var(--club-accent);
+  font-weight: 700;
+}
+body.role-player .auth-badge {
+  border-color: rgba(52, 152, 219, 0.4);
+}
+body.role-player [data-action="reset-all"],
+body.role-player [data-action="import-trigger"],
+body.role-player .sb-export {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+/* Логотип = вхід на дошку */
+.logo-area.logo-board-entry {
+  cursor: pointer;
+  border-radius: 12px;
+  padding: 4px 8px 4px 4px;
+  transition: background .15s, box-shadow .15s;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.logo-area.logo-board-entry:hover,
+.logo-area.logo-board-entry:focus {
+  background: rgba(200,168,75,0.12);
+  box-shadow: 0 0 0 1px rgba(200,168,75,0.35);
+  outline: none;
+}
+.logo-area.logo-board-entry:active {
+  transform: scale(0.98);
+}
+.logo-area.logo-board-entry::after {
+  content: 'Дошка';
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--club-accent);
+  margin-left: 4px;
+  opacity: 0.85;
+}
+@media (max-width: 480px) {
+  .logo-area.logo-board-entry::after { display: none; }
+}

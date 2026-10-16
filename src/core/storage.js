@@ -10,6 +10,10 @@ const StorageManager = {
       Store.reset();
       this.save();
     }
+    // Фонова синхронізація з Telegram Cloud Storage
+    setTimeout(() => {
+      this.syncFromCloud().catch(() => {});
+    }, 400);
   },
 
   save() {
@@ -17,28 +21,154 @@ const StorageManager = {
     try {
       const s = Store.get();
       if (!s) return;
-      const payload = {
-        schemaVersion: SCHEMA_VERSION,
-        updatedAt: new Date().toISOString(),
-        settings: s.settings,
-        players: s.players,
-        trainings: s.trainings,
-        exercises: s.exercises,
-        boards: s.boards,
-        calendar: s.calendar,
-        matches: s.matches,
-        diary: s.diary || [],
-        myExercises: s.myExercises || [],
-        animations: s.animations || [],
-        activeBoard: {
-          objects: s.activeBoard.objects,
-          fieldView: s.activeBoard.fieldView
-        }
-      };
+      s.updatedAt = new Date().toISOString();
+      const payload = this._buildLocalPayload();
       localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+      this._scheduleCloudPush(payload);
     } catch (e) {
       ErrorManager.log('Storage.save', e);
       Toast.show('Не вдалося зберегти (квота storage?)', 'err');
+    }
+  },
+
+  _buildLocalPayload() {
+    const s = Store.get();
+    return {
+      schemaVersion: SCHEMA_VERSION,
+      updatedAt: s.updatedAt || new Date().toISOString(),
+      settings: s.settings,
+      players: s.players,
+      trainings: s.trainings,
+      exercises: s.exercises,
+      boards: s.boards,
+      calendar: s.calendar,
+      matches: s.matches,
+      diary: s.diary || [],
+      myExercises: s.myExercises || [],
+      animations: s.animations || [],
+      activeBoard: {
+        objects: (s.activeBoard && s.activeBoard.objects) || [],
+        fieldView: (s.activeBoard && s.activeBoard.fieldView) || 'full'
+      }
+    };
+  },
+
+  /* ── Telegram Cloud Storage sync (chunked, ≤~3500 chars/key) ── */
+  CLOUD_META: 'ms_meta',
+  CLOUD_PREFIX: 'ms_c_',
+  CLOUD_CHUNK: 3200,
+  _cloudTimer: null,
+
+  _cloudApi() {
+    try {
+      const tg = window.Telegram && window.Telegram.WebApp;
+      return tg && tg.CloudStorage ? tg.CloudStorage : null;
+    } catch (_) { return null; }
+  },
+
+  _scheduleCloudPush(payload) {
+    if (!this._cloudApi()) return;
+    clearTimeout(this._cloudTimer);
+    this._cloudTimer = setTimeout(() => this.pushToCloud(payload), 800);
+  },
+
+  pushToCloud(payload) {
+    const cs = this._cloudApi();
+    if (!cs) return;
+    try {
+      const text = JSON.stringify(payload || this._buildLocalPayload());
+      const chunks = [];
+      for (let i = 0; i < text.length; i += this.CLOUD_CHUNK) {
+        chunks.push(text.slice(i, i + this.CLOUD_CHUNK));
+      }
+      const meta = JSON.stringify({
+        updatedAt: (payload && payload.updatedAt) || new Date().toISOString(),
+        schemaVersion: SCHEMA_VERSION,
+        chunks: chunks.length,
+        size: text.length
+      });
+      // write meta + chunks sequentially
+      const write = (key, val) => new Promise((resolve) => {
+        try {
+          cs.setItem(key, val, (err) => resolve(!err));
+        } catch (_) { resolve(false); }
+      });
+      (async () => {
+        await write(this.CLOUD_META, meta);
+        for (let i = 0; i < chunks.length; i++) {
+          await write(this.CLOUD_PREFIX + i, chunks[i]);
+        }
+        // optional: clear stale chunks
+        await write(this.CLOUD_PREFIX + 'n', String(chunks.length));
+      })().catch(e => console.warn('[CloudSync] push', e));
+    } catch (e) {
+      console.warn('[CloudSync] push', e);
+    }
+  },
+
+  pullFromCloud() {
+    return new Promise((resolve) => {
+      const cs = this._cloudApi();
+      if (!cs) return resolve(null);
+      try {
+        cs.getItem(this.CLOUD_META, (err, metaRaw) => {
+          if (err || !metaRaw) return resolve(null);
+          let meta;
+          try { meta = JSON.parse(metaRaw); } catch (_) { return resolve(null); }
+          const n = meta.chunks || 0;
+          if (!n) return resolve(null);
+          const parts = new Array(n);
+          let left = n;
+          let failed = false;
+          for (let i = 0; i < n; i++) {
+            ((idx) => {
+              cs.getItem(this.CLOUD_PREFIX + idx, (e2, chunk) => {
+                if (e2 || chunk == null) failed = true;
+                else parts[idx] = chunk;
+                left--;
+                if (left === 0) {
+                  if (failed) return resolve(null);
+                  try {
+                    const text = parts.join('');
+                    const data = JSON.parse(text);
+                    data.updatedAt = meta.updatedAt || data.updatedAt;
+                    resolve(data);
+                  } catch (_) { resolve(null); }
+                }
+              });
+            })(i);
+          }
+        });
+      } catch (_) { resolve(null); }
+    });
+  },
+
+  async syncFromCloud() {
+    try {
+      const cloud = await this.pullFromCloud();
+      if (!cloud) return false;
+      const localRaw = localStorage.getItem(STORAGE_KEY);
+      let localAt = 0;
+      if (localRaw) {
+        try { localAt = Date.parse(JSON.parse(localRaw).updatedAt || 0) || 0; } catch (_) {}
+      }
+      const cloudAt = Date.parse(cloud.updatedAt || 0) || 0;
+      if (cloudAt > localAt) {
+        this.createBackup();
+        const migrated = this.migrate(cloud, cloud.schemaVersion || 1);
+        Store.set(migrated);
+        // write local without re-push loop storm
+        const payload = this._buildLocalPayload();
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+        Toast.show('Синхронізовано з Telegram Cloud', 'ok');
+        try { if (typeof App !== 'undefined') { App.applyBranding(); App.renderCurrent(); } } catch (_) {}
+        try { if (typeof AuthManager !== 'undefined') { AuthManager._resolveRole(); AuthManager._applyUiRole(); } } catch (_) {}
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.warn('[CloudSync] pull', e);
+      return false;
     }
   },
 
@@ -123,6 +253,9 @@ const StorageManager = {
         }
       }
       if (data.activeBoard.fieldView) base.activeBoard.fieldView = data.activeBoard.fieldView;
+    }
+    if (!base.settings.rbac) {
+      base.settings.rbac = { coaches: [], playerLinks: {} };
     }
     base.schemaVersion = SCHEMA_VERSION;
     return base;
@@ -364,54 +497,87 @@ const StorageManager = {
 
 
 
-  /** Нативний вибір файлу: showOpenFilePicker → fallback input#importFile */
-  async pickAndImportJSON() {
-    // 1) Сучасний File System Access API (Chrome / Edge / частина desktop)
+  /** Чи iOS / Telegram WebView — без showOpenFilePicker */
+  _isMobileWebView() {
     try {
-      if (typeof window.showOpenFilePicker === 'function') {
-        const handles = await window.showOpenFilePicker({
+      if (typeof TelegramManager !== 'undefined' && TelegramManager.isTelegram) return true;
+      const ua = navigator.userAgent || '';
+      return /iPhone|iPad|iPod|Android/i.test(ua) || (!!navigator.standalone);
+    } catch (_) { return true; }
+  },
+
+  /** Постійний file input (не зникає після re-render views) */
+  _ensureImportInput() {
+    let inp = document.getElementById('importFilePermanent');
+    if (inp) return inp;
+    inp = document.createElement('input');
+    inp.type = 'file';
+    inp.id = 'importFilePermanent';
+    inp.accept = 'application/json,.json,text/plain,text/json,*/*';
+    inp.setAttribute('aria-hidden', 'true');
+    inp.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;opacity:0.01;z-index:0;pointer-events:none';
+    document.body.appendChild(inp);
+    inp.addEventListener('change', (e) => {
+      try {
+        const f = e.target.files && e.target.files[0];
+        e.target.value = '';
+        if (!f) {
+          Toast.show('Файл не вибрано', 'warn');
+          return;
+        }
+        this.importJSON(f);
+      } catch (err) {
+        Toast.show('Помилка читання файлу: ' + (err.message || err), 'err');
+      }
+    });
+    return inp;
+  },
+
+  /**
+   * Вибір файлу JSON.
+   * На iPhone / Telegram — ТІЛЬКИ hidden input + синхронний click() у межах user gesture.
+   * showOpenFilePicker на iOS часто ламає жест і «нічого не відбувається».
+   */
+  pickAndImportJSON() {
+    try {
+      // Desktop Chrome only
+      if (!this._isMobileWebView() && typeof window.showOpenFilePicker === 'function') {
+        window.showOpenFilePicker({
           multiple: false,
           types: [{
             description: 'JSON',
             accept: { 'application/json': ['.json'], 'text/plain': ['.json', '.txt'] }
-          }],
-          excludeAcceptAllOption: false
+          }]
+        }).then(async (handles) => {
+          if (handles && handles[0]) {
+            const file = await handles[0].getFile();
+            this.importJSON(file);
+          }
+        }).catch((e) => {
+          if (e && e.name === 'AbortError') return;
+          // fallback input
+          this._triggerFileInput();
         });
-        if (handles && handles[0]) {
-          const file = await handles[0].getFile();
-          this.importJSON(file);
-          return;
-        }
+        return;
       }
     } catch (e) {
-      // AbortError = користувач скасував
-      if (e && e.name === 'AbortError') return;
-      console.warn('[import] showOpenFilePicker', e);
+      console.warn('[import] picker', e);
     }
+    this._triggerFileInput();
+  },
 
-    // 2) Класичний input (браузер + більшість Telegram WebView)
-    let inp = document.getElementById('importFile');
-    if (!inp) {
-      inp = document.createElement('input');
-      inp.type = 'file';
-      inp.id = 'importFile';
-      inp.accept = 'application/json,.json,text/json';
-      inp.style.cssText = 'position:fixed;left:-9999px;width:1px;height:1px;opacity:0';
-      document.body.appendChild(inp);
-      inp.addEventListener('change', (e) => {
-        const f = e.target.files && e.target.files[0];
-        if (f) this.importJSON(f);
-        e.target.value = '';
-      });
-    } else {
-      inp.value = '';
-      inp.setAttribute('accept', 'application/json,.json,text/json');
-    }
-    // Важливо для iOS/Telegram: клік синхронно з user gesture
+  _triggerFileInput() {
     try {
-      inp.click();
+      const inp = this._ensureImportInput();
+      inp.value = '';
+      // iOS: click must be direct/synchronous from user gesture
+      const ev = new MouseEvent('click', { view: window, bubbles: true, cancelable: true });
+      inp.dispatchEvent(ev);
+      // деякі WebView ігнорують dispatchEvent
+      if (typeof inp.click === 'function') inp.click();
     } catch (e2) {
-      Toast.show('Не вдалося відкрити вибір файлу', 'err');
+      console.error(e2);
+      Toast.show('Не вдалося відкрити вибір файлу. Спробуйте ще раз.', 'err');
     }
   },
 

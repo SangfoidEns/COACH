@@ -25,7 +25,7 @@ const Views = {
       </div>
       <div class="qa">
         <button class="btn btn-p" data-action="new-training">+ Нове тренування</button>
-        <button class="btn btn-s" data-view="board">⚽ Дошка</button>
+        
         <button class="btn btn-s" data-view="players">👥 Склад</button>
         <button class="btn btn-s" data-view="calendar">📅 Календар</button>
         <button class="btn btn-s" data-view="tactics">📐 Тактика</button>
@@ -320,11 +320,22 @@ const Views = {
         <div class="fa">
           <div class="data-io glass-io">
             <button type="button" class="btn btn-p data-io-btn" data-action="export">Експорт JSON</button>
-            <button type="button" class="btn btn-s data-io-btn" data-action="import-trigger">Імпорт JSON</button>
-            <input type="file" id="importFile" accept="application/json,.json,text/json" style="position:fixed;left:-9999px;width:1px;height:1px;opacity:0" tabindex="-1" aria-hidden="true">
+            <button type="button" class="btn btn-s data-io-btn" data-action="import-trigger" id="btnImportJson">Імпорт JSON</button>
+            <p class="note-sm">На iPhone оберіть файл із «Файли» / iCloud Drive. Дані не затруть склад без успішного парсингу.</p>
           </div>
           <button class="btn btn-d" data-action="reset-all">Скинути все</button>
         </div>
+      </div>
+      <div class="card"><div class="ct">Ролі та Telegram (RBAC)</div>
+        <p class="note-sm" style="margin-bottom:10px">Порожній список тренерів = усі користувачі Telegram мають повний доступ (режим налаштування). Додайте Telegram ID або @username тренерів, щоб обмежити редагування.</p>
+        <div class="fgr full"><label>Telegram ID / @username тренерів (через кому)</label>
+          <input type="text" id="setCoaches" value="${sanitize(((s.settings.rbac||{}).coaches||[]).join(', '))}" placeholder="123456789, @coach_nick">
+        </div>
+        <div class="fgr full"><label>Прив'язка гравців (JSON: {"telegramId":"playerId"})</label>
+          <textarea id="setPlayerLinks" rows="3" placeholder='{"123":"p01","@player":"p07"}'>${sanitize(JSON.stringify(((s.settings.rbac||{}).playerLinks)||{}, null, 0))}</textarea>
+        </div>
+        <p class="note-sm">Поточний користувач: <strong id="rbacMe">—</strong></p>
+        <button type="button" class="btn btn-s" data-action="save-rbac">Зберегти ролі</button>
       </div>
       <div class="card"><div class="ct">Про застосунок</div>
         <p style="font-size:12px;color:var(--muted);line-height:1.6">
@@ -371,7 +382,7 @@ const Views = {
 
     return `
       <div class="st">3️⃣ 3-Defender Tactical Center
-        <button class="btn btn-p btn-sm" data-view="board">Відкрити дошку</button>
+        <button class="btn btn-p btn-sm" data-action="open-default-board">Відкрити дошку (логотип)</button>
       </div>
       <p class="note-sm" style="margin-bottom:12px">Професійний workspace для back three: фази гри, ролі, ротації, overload. Одна команда — багато структур.</p>
 

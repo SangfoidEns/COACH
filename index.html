@@ -14,9 +14,10 @@
 <div class="app" id="app">
 <header class="header">
   <button type="button" class="btn-i sb-toggle" data-action="toggle-sidebar" aria-label="Меню" title="Меню">☰</button>
-  <div class="logo-area">
-    <div class="logo-ph" id="clubLogo" aria-label="Логотип клубу">МШ</div>
+  <div class="logo-area logo-board-entry" data-action="open-default-board" role="button" tabindex="0" title="Відкрити тактичну дошку" aria-label="Відкрити тактичну дошку">
+    <div class="logo-ph" id="clubLogo" aria-hidden="true">МШ</div>
     <div class="club-name" id="clubName">МЕТАЛІСТ <span>ШТУТГАРТ</span></div>
+    <div class="auth-badge" id="authBadge" title="Роль користувача">—</div>
   </div>
   <div class="hdr-timers" aria-label="Таймери">
     <div class="ht-block">
@@ -95,8 +96,7 @@
     <div class="nav-sec">Головне</div>
     <a class="nav on" data-view="dashboard" href="#"><span class="ic ic-svg" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg></span><span class="nl">Головна</span></a>
     <a class="nav" data-view="trainings" href="#"><span class="ic ic-svg" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h4"/></svg></span><span class="nl">Тренування</span></a>
-    <a class="nav" data-view="board" href="#"><span class="ic ic-svg" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg></span><span class="nl">Тактична дошка</span></a>
-    <div class="nav-sec">Вправи</div>
+<div class="nav-sec">Вправи</div>
     <a class="nav" data-view="exercises" href="#"><span class="ic ic-svg" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 6.5v11M17.5 6.5v11M6.5 8h3M14.5 8h3M6.5 16h3M14.5 16h3M9.5 8v8M14.5 8v8"/></svg></span><span class="nl">Бібліотека вправ</span></a>
     <a class="nav" data-view="myex" href="#"><span class="ic ic-svg" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.5 6.5L21 11l-5 4.2L17.5 21 12 17.5 6.5 21 8 15.2 3 11l6.5-1.5L12 3z"/></svg></span><span class="nl">Мої вправи</span></a>
     <div class="nav-sec">Тактика</div>
@@ -119,8 +119,7 @@
 
 <nav class="mn" id="mobileNav" aria-label="Мобільна навігація">
   <a class="mni on" data-view="dashboard" href="#"><span class="ic ic-svg" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg></span>Головна</a>
-  <a class="mni" data-view="board" href="#"><span class="ic ic-svg" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg></span>Дошка</a>
-  <a class="mni" data-view="trainings" href="#"><span class="ic ic-svg" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h4"/></svg></span>Тренув.</a>
+<a class="mni" data-view="trainings" href="#"><span class="ic ic-svg" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h4"/></svg></span>Тренув.</a>
   <a class="mni" data-view="players" href="#"><span class="ic ic-svg" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3 19c0-3.2 2.7-5.5 6-5.5s6 2.3 6 5.5"/><circle cx="17" cy="9" r="2.4"/><path d="M21 19c0-2.4-1.6-4.2-4-4.8"/></svg></span>Гравці</a>
   <a class="mni" data-view="calendar" href="#"><span class="ic ic-svg" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></span>Календар</a>
 </nav>
@@ -150,6 +149,7 @@
   <script src="./src/data/demo.js"></script>
   <script src="./src/data/schemes.js"></script>
   <script src="./src/core/store.js"></script>
+  <script src="./src/core/auth.js"></script>
   <script src="./src/core/storage.js"></script>
   <script src="./src/board/TimerEngine.js"></script>
   <script src="./src/board/BoardEngine.js"></script>

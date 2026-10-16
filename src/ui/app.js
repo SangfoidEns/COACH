@@ -10,6 +10,7 @@ const App = {
     try { this.applyBranding(); } catch (e) { console.warn('branding', e); }
     this.bindEvents();
     try { /* плаваюча навігація вимкнена — статичний сайдбар справа */ } catch (e) { console.warn('nav', e); }
+    try { if (typeof AuthManager !== 'undefined') AuthManager.init(); } catch (e) { console.warn('Auth', e); }
     try { BoardEngine.init(); } catch (e) { console.warn('board', e); }
     const view = (Store.get().ui && Store.get().ui.view) || 'dashboard';
     this.navigate(view);
@@ -72,6 +73,13 @@ const App = {
   },
 
   applyBranding() {
+    try {
+      const me = document.getElementById('rbacMe');
+      if (me && typeof AuthManager !== 'undefined') {
+        me.textContent = AuthManager.displayName() + ' · ' + AuthManager.roleLabel() +
+          (AuthManager.user ? ' · ID ' + AuthManager.user.id : '');
+      }
+    } catch (_) {}
     const s = Store.get().settings;
     document.documentElement.style.setProperty('--club-primary', s.primary);
     document.documentElement.style.setProperty('--club-secondary', s.accent);
@@ -401,13 +409,65 @@ const App = {
       if (action === 'new-match') return Actions.newMatch();
       if (action === 'new-event') return Actions.newEvent();
       if (action === 'toggle-rp') return document.getElementById('rightPanel').classList.toggle('force');
-      if (action === 'export') return StorageManager.exportJSON();
+      if (action === 'export') {
+        if (typeof AuthManager !== 'undefined' && !AuthManager.can('import-export')) {
+          return Toast.show('Експорт доступний лише тренеру', 'warn');
+        }
+        return StorageManager.exportJSON();
+      }
       if (action === 'import-trigger') {
-        StorageManager.pickAndImportJSON();
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof AuthManager !== 'undefined' && !AuthManager.can('import-export')) {
+          return Toast.show('Імпорт доступний лише тренеру', 'warn');
+        }
+        // Синхронно в межах click gesture (критично для iPhone)
+        try { StorageManager.pickAndImportJSON(); } catch (err) {
+          Toast.show('Імпорт: ' + (err.message || err), 'err');
+        }
         return;
       }
-      if (action === 'reset-all') return Modal.confirm('Скинути всі дані до демо?', () => { StorageManager.clear(); App.applyBranding(); App.navigate('dashboard'); Toast.show('Скинуто', 'ok'); });
+      if (action === 'open-default-board') {
+        e.preventDefault();
+        e.stopPropagation();
+        App.openDefaultBoard();
+        return;
+      }
+      if (action === 'reset-all') {
+        if (typeof AuthManager !== 'undefined' && !AuthManager.can('reset-data')) {
+          return Toast.show('Скидання доступне лише тренеру', 'warn');
+        }
+        return Modal.confirm('Скинути всі дані до демо?', () => { StorageManager.clear(); App.applyBranding(); App.navigate('dashboard'); Toast.show('Скинуто', 'ok'); });
+      }
       if (action === 'save-settings') return Actions.saveSettings();
+      if (action === 'save-rbac') {
+        const coachesRaw = (document.getElementById('setCoaches')?.value || '').split(',').map(x => x.trim()).filter(Boolean);
+        let links = {};
+        try { links = JSON.parse(document.getElementById('setPlayerLinks')?.value || '{}'); } catch (_) { Toast.show('Невірний JSON прив\'язок', 'err'); return; }
+        const st = Store.get();
+        if (!st.settings.rbac) st.settings.rbac = { coaches: [], playerLinks: {} };
+        st.settings.rbac.coaches = coachesRaw;
+        st.settings.rbac.playerLinks = links;
+        StorageManager.save();
+        AuthManager._resolveRole();
+        AuthManager._applyUiRole();
+        Toast.show('Ролі збережено · ' + AuthManager.roleLabel(), 'ok');
+        return;
+      }
+      if (action === 'save-rbac') {
+        const coachesRaw = (document.getElementById('setCoaches')?.value || '').split(',').map(x => x.trim()).filter(Boolean);
+        let links = {};
+        try { links = JSON.parse(document.getElementById('setPlayerLinks')?.value || '{}'); } catch (_) { Toast.show('Невірний JSON прив\'язок', 'err'); return; }
+        const st = Store.get();
+        if (!st.settings.rbac) st.settings.rbac = { coaches: [], playerLinks: {} };
+        st.settings.rbac.coaches = coachesRaw;
+        st.settings.rbac.playerLinks = links;
+        StorageManager.save();
+        AuthManager._resolveRole();
+        AuthManager._applyUiRole();
+        Toast.show('Ролі збережено · ' + AuthManager.roleLabel(), 'ok');
+        return;
+      }
       if (action === 'close-modal') return Modal.close();
       if (action === 'timer-start') return TimerEngine.start();
       if (action === 'timer-pause') return TimerEngine.pause();
@@ -678,9 +738,8 @@ const App = {
       if (it) { it.action(); document.getElementById('gResults').classList.remove('show'); document.getElementById('gSearch').value = ''; }
     });
 
-    document.getElementById('importFile')?.addEventListener('change', e => {
-      if (e.target.files[0]) StorageManager.importJSON(e.target.files[0]);
-    });
+    // Постійний input створюється StorageManager._ensureImportInput()
+    try { StorageManager._ensureImportInput(); } catch (_) {}
 
     // Keyboard shortcuts
     document.addEventListener('keydown', e => {
