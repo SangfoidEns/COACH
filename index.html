@@ -12,18 +12,18 @@
 <body>
 
 <div class="app" id="app">
-<header class="header header-2tier">
+<header class="header header-2tier" id="appHeader">
   <div class="hdr-top">
-    <div class="logo-area logo-board-entry" data-action="open-default-board" role="button" tabindex="0" title="Відкрити тактичну дошку" aria-label="Відкрити тактичну дошку">
+    <button type="button" class="logo-area logo-board-entry" id="club-logo-btn" data-action="open-default-board" title="Відкрити тактичну дошку" aria-label="Відкрити тактичну дошку">
       <div class="logo-ph" id="clubLogo" aria-hidden="true">МШ</div>
       <div class="club-name" id="clubName">МЕТАЛІСТ <span>ШТУТГАРТ</span></div>
-    </div>
-    <div class="hdr-meta">
+    </button>
+    <div class="hdr-center">
+      <div class="dt dt-clock" id="clock"><strong>—</strong></div>
+      <div class="dt dt-next" id="nextTr">Наступне: <strong>—</strong></div>
       <div class="auth-badge" id="authBadge" title="Користувач">—</div>
-      <div class="dt" id="nextTr">Наступне: <strong>—</strong></div>
-      <div class="dt" id="clock"><strong>—</strong></div>
     </div>
-    <button type="button" class="btn-i sb-toggle hdr-menu-btn" data-action="toggle-sidebar" aria-label="Меню" title="Меню">☰</button>
+    <button type="button" class="hdr-menu-btn" data-action="toggle-sidebar" aria-label="Меню" title="Меню">☰</button>
   </div>
   <div class="hdr-bottom" aria-label="Таймери">
     <div class="ht-block">
@@ -45,9 +45,7 @@
         <button type="button" class="ht-btn" data-action="extimer-reset" title="Скинути">↻</button>
       </div>
     </div>
-    <div class="hdr-a-inline">
-      <button class="btn btn-p btn-sm" data-action="new-training" aria-label="Нове тренування">+ Тренування</button>
-    </div>
+    <button type="button" class="btn btn-p btn-sm hdr-new-tr" data-action="new-training">+ Тренування</button>
   </div>
 </header>
 

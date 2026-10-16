@@ -72,6 +72,71 @@ const App = {
     }
   },
 
+
+  /** Логотип / назва клубу → тактична дошка з дефолтною схемою */
+  bindLogoAndImport() {
+    const logo = document.getElementById('club-logo-btn') || document.querySelector('[data-action="open-default-board"]');
+    if (logo && !logo._msBound) {
+      logo._msBound = true;
+      const open = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.openDefaultBoard();
+      };
+      logo.addEventListener('click', open);
+      logo.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this.openDefaultBoard(); }
+      });
+    }
+    // Імпорт: делегація + id
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('#btnImportJson, [data-action="import-trigger"]');
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      if (typeof AuthManager !== 'undefined' && !AuthManager.can('import-export')) {
+        Toast.show('Імпорт доступний лише тренеру', 'warn');
+        return;
+      }
+      try { StorageManager.pickAndImportJSON(); } catch (err) {
+        Toast.show('Імпорт: ' + (err.message || err), 'err');
+      }
+    }, true); // capture phase — раніше за navigate
+  },
+
+  openDefaultBoard() {
+    try {
+      const s = Store.get();
+      if (!s || !s.activeBoard) {
+        this.navigate('board');
+        return;
+      }
+      const defName = (s.settings && s.settings.defaultScheme) || '4-3-3';
+      const pinned = (s.boards || []).find(b => b && b.isDefault) || (s.boards || []).find(b => b && b.objects && b.objects.length) || null;
+      if (pinned && Array.isArray(pinned.objects) && pinned.objects.length) {
+        s.activeBoard.objects = JSON.parse(JSON.stringify(pinned.objects));
+        if (pinned.fieldView) s.activeBoard.fieldView = pinned.fieldView;
+        s.activeBoard.selectedId = null;
+        try { StorageManager.saveDebounced(); } catch (_) {}
+      } else if (typeof BoardEngine !== 'undefined' && typeof BoardEngine.applyScheme === 'function') {
+        try { BoardEngine.applyScheme(defName); } catch (e) { console.warn('[scheme]', e); }
+      }
+      this.navigate('board');
+      setTimeout(() => {
+        try {
+          if (BoardEngine.render) BoardEngine.render();
+          if (BoardEngine.fitField) BoardEngine.fitField();
+          if (BoardEngine.renderToolbar) BoardEngine.renderToolbar();
+        } catch (_) {}
+      }, 60);
+      try { Toast.show('Дошка · ' + defName, 'ok'); } catch (_) {}
+    } catch (e) {
+      console.error('[openDefaultBoard]', e);
+      try { this.navigate('board'); } catch (_) {}
+    }
+  },
+
   applyBranding() {
     try {
       const me = document.getElementById('rbacMe');
@@ -394,6 +459,9 @@ const App = {
   },
 
   bindEvents() {
+    // Прямі прив'язки (iOS / Telegram): логотип і імпорт не залежать від делегації
+    try { this.bindLogoAndImport(); } catch (e) { console.warn(e); }
+
     // Event delegation — single listener
     document.addEventListener('click', e => {
       const t = e.target.closest('[data-action],[data-view],[data-tool],[data-ai],[data-edit-training],[data-del-training],[data-dup-training],[data-edit-player],[data-del-player],[data-scheme],[data-load-board],[data-del-board],[data-special],[data-day],[data-view-exercise],[data-view-match],[data-del-match],[data-tpl],[data-modal-action],[data-b3-phase],[data-board-tpl],[data-b3-rot],[data-del-myex],[data-add-myex-tr],[data-load-myex-board],[data-del-diary],[data-edit-diary],[data-load-diary-board],[data-diary-filter],[data-play-anim]');

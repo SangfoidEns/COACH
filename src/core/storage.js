@@ -69,7 +69,7 @@ const StorageManager = {
   _scheduleCloudPush(payload) {
     if (!this._cloudApi()) return;
     clearTimeout(this._cloudTimer);
-    this._cloudTimer = setTimeout(() => this.pushToCloud(payload), 800);
+    this._cloudTimer = setTimeout(() => this.pushToCloud(payload), 400);
   },
 
   pushToCloud(payload) {
@@ -77,6 +77,12 @@ const StorageManager = {
     if (!cs) return;
     try {
       const text = JSON.stringify(payload || this._buildLocalPayload());
+      // Якщо вміщується в один ключ (~4KB) — дубль metalist_state для сумісності
+      if (text.length <= 3500) {
+        try {
+          cs.setItem('metalist_state', text, () => {});
+        } catch (_) {}
+      }
       const chunks = [];
       for (let i = 0; i < text.length; i += this.CLOUD_CHUNK) {
         chunks.push(text.slice(i, i + this.CLOUD_CHUNK));
@@ -110,36 +116,51 @@ const StorageManager = {
     return new Promise((resolve) => {
       const cs = this._cloudApi();
       if (!cs) return resolve(null);
+      const readChunks = () => {
+        try {
+          cs.getItem(this.CLOUD_META, (err, metaRaw) => {
+            if (err || !metaRaw) return resolve(null);
+            let meta;
+            try { meta = JSON.parse(metaRaw); } catch (_) { return resolve(null); }
+            const n = meta.chunks || 0;
+            if (!n) return resolve(null);
+            const parts = new Array(n);
+            let left = n;
+            let failed = false;
+            for (let i = 0; i < n; i++) {
+              ((idx) => {
+                cs.getItem(this.CLOUD_PREFIX + idx, (e2, chunk) => {
+                  if (e2 || chunk == null) failed = true;
+                  else parts[idx] = chunk;
+                  left--;
+                  if (left === 0) {
+                    if (failed) return resolve(null);
+                    try {
+                      const text = parts.join('');
+                      const data = JSON.parse(text);
+                      data.updatedAt = meta.updatedAt || data.updatedAt;
+                      resolve(data);
+                    } catch (_) { resolve(null); }
+                  }
+                });
+              })(i);
+            }
+          });
+        } catch (_) { resolve(null); }
+      };
       try {
-        cs.getItem(this.CLOUD_META, (err, metaRaw) => {
-          if (err || !metaRaw) return resolve(null);
-          let meta;
-          try { meta = JSON.parse(metaRaw); } catch (_) { return resolve(null); }
-          const n = meta.chunks || 0;
-          if (!n) return resolve(null);
-          const parts = new Array(n);
-          let left = n;
-          let failed = false;
-          for (let i = 0; i < n; i++) {
-            ((idx) => {
-              cs.getItem(this.CLOUD_PREFIX + idx, (e2, chunk) => {
-                if (e2 || chunk == null) failed = true;
-                else parts[idx] = chunk;
-                left--;
-                if (left === 0) {
-                  if (failed) return resolve(null);
-                  try {
-                    const text = parts.join('');
-                    const data = JSON.parse(text);
-                    data.updatedAt = meta.updatedAt || data.updatedAt;
-                    resolve(data);
-                  } catch (_) { resolve(null); }
-                }
-              });
-            })(i);
+        cs.getItem('metalist_state', (e0, single) => {
+          if (!e0 && single) {
+            try {
+              const data = JSON.parse(single);
+              if (data && typeof data === 'object') return resolve(data);
+            } catch (_) {}
           }
+          readChunks();
         });
-      } catch (_) { resolve(null); }
+      } catch (_) {
+        readChunks();
+      }
     });
   },
 
@@ -604,11 +625,12 @@ const StorageManager = {
         } catch (_) {}
         try { App.applyBranding(); } catch (_) {}
         try { App.renderCurrent(); } catch (_) {}
-        Toast.show('Імпортовано успішно', 'ok');
+        try { this.pushToCloud(this._buildLocalPayload()); } catch (_) {}
+        Toast.show('Склад та схеми успішно імпортовано!', 'ok');
         return true;
       } catch (e) {
         try { ErrorManager.log('import', e); } catch (_) {}
-        Toast.show('Помилка імпорту: ' + (e.message || e), 'err');
+        Toast.show('Помилка файлу JSON: ' + (e.message || e), 'err');
         return false;
       }
     };
