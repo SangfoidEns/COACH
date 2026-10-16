@@ -3,7 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1, user-scalable=no">
-<meta name="theme-color" content="#0d1117">
+<meta name="theme-color" content="#0b0d0c">
+<meta name="description" content="METALIST STUTTGART — професійна цифрова платформа футбольного тренера: тактична дошка, тренування, вправи, команда та аналітика.">
+<meta name="application-name" content="Metalist Coach">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./assets/metalist-mark.svg" type="image/svg+xml">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>МЕТАЛІСТ ШТУТГАРТ — Coaching Platform</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -164,5 +168,6 @@
   <script src="./src/ui/ai.js"></script>
   <script src="./src/ui/app.js"></script>
   <script src="./src/ui/actions.js"></script>
+<script>if ('serviceWorker' in navigator && location.protocol !== 'file:') { window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {})); }</script>
 </body>
 </html>
