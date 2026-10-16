@@ -336,16 +336,40 @@ const App = {
   },
 
   renderCurrent() {
-    const view = Store.get().ui.view;
+    const view = (Store.get().ui && Store.get().ui.view) || 'dashboard';
     if (view === 'board') {
-      BoardEngine.renderToolbar();
-      BoardEngine.render();
-      this.initBoardToolbarDrag();
+      try {
+        BoardEngine.renderToolbar();
+        BoardEngine.render();
+        this.initBoardToolbarDrag();
+      } catch (e) { console.error('[board render]', e); }
       return;
     }
     const el = document.getElementById('v-' + view);
-    if (!el || !Views[view]) return;
-    el.innerHTML = Views[view]();
+    if (!el) {
+      console.warn('[renderCurrent] missing #v-' + view);
+      return;
+    }
+    if (!Views[view] || typeof Views[view] !== 'function') {
+      el.innerHTML = '<div class="card"><div class="ct">Розділ недоступний</div></div>';
+      return;
+    }
+    try {
+      el.innerHTML = Views[view]();
+      if (view === 'settings') {
+        try {
+          const me = document.getElementById('rbacMe');
+          if (me && typeof AuthManager !== 'undefined') {
+            me.textContent = AuthManager.displayName() + ' · ' + AuthManager.roleLabel();
+          }
+        } catch (_) {}
+      }
+    } catch (e) {
+      console.error('[renderCurrent]', view, e);
+      el.innerHTML = '<div class="card"><div class="ct">Помилка екрана</div><p class="note-sm">' +
+        (typeof sanitize === 'function' ? sanitize(e.message || String(e)) : String(e)) +
+        '</p><button type="button" class="btn btn-s" data-action="import-trigger">Імпорт JSON</button></div>';
+    }
   },
 
   updateClock() {

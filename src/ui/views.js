@@ -296,43 +296,51 @@ const Views = {
   },
 
   settings() {
-    const s = Store.get().settings;
-    return `
+    try {
+      const root = Store.get() || {};
+      const s = root.settings || {};
+      const rbac = s.rbac || { coaches: [], playerLinks: {} };
+      const coachesStr = sanitize((rbac.coaches || []).join(', '));
+      let linksStr = '{}';
+      try { linksStr = sanitize(JSON.stringify(rbac.playerLinks || {})); } catch (_) { linksStr = '{}'; }
+      const pri = s.primary || '#1a3a5c';
+      const acc = s.accent || '#c8a84b';
+      return `
       <div class="st">Налаштування</div>
       <div class="card"><div class="ct">Клуб</div>
         <div class="fg">
-          <div class="fgr"><label>Назва</label><input id="setName" value="${sanitize(s.clubName)}"></div>
-          <div class="fgr"><label>Скорочення</label><input id="setShort" value="${sanitize(s.clubShort)}" maxlength="4"></div>
-          <div class="fgr"><label>Основний колір</label><input type="color" id="setPri" value="${s.primary}"></div>
-          <div class="fgr"><label>Акцент</label><input type="color" id="setAcc" value="${s.accent}"></div>
-          <div class="fgr"><label>Тривалість за замовч. (хв)</label><input type="number" id="setDur" value="${s.defaultDuration}"></div>
-          <div class="fgr"><label>Інтенсивність за замовч.</label><input type="number" id="setInt" value="${s.defaultIntensity}" min="1" max="10"></div>
+          <div class="fgr"><label>Назва</label><input id="setName" value="${sanitize(s.clubName || 'МЕТАЛІСТ ШТУТГАРТ')}"></div>
+          <div class="fgr"><label>Скорочення</label><input id="setShort" value="${sanitize(s.clubShort || 'МШ')}" maxlength="4"></div>
+          <div class="fgr"><label>Основний колір</label><input type="color" id="setPri" value="${pri}"></div>
+          <div class="fgr"><label>Акцент</label><input type="color" id="setAcc" value="${acc}"></div>
+          <div class="fgr"><label>Тривалість за замовч. (хв)</label><input type="number" id="setDur" value="${s.defaultDuration != null ? s.defaultDuration : 90}"></div>
+          <div class="fgr"><label>Інтенсивність за замовч.</label><input type="number" id="setInt" value="${s.defaultIntensity != null ? s.defaultIntensity : 6}" min="1" max="10"></div>
           <div class="fgr full"><label>Логотип (завантажити зображення)</label>
             <input type="file" id="setLogo" accept="image/*">
             ${s.logoData ? '<p class="note-sm">Логотип завантажено</p>' : '<p class="note-sm">Placeholder: CLUB LOGO</p>'}
           </div>
-          <div class="fgr"><label><input type="checkbox" id="setAuto" ${s.autosave !== false ? 'checked' : ''}> Autosave</label></div>
+          <div class="fgr"><label><input type="checkbox" id="setAuto" ${s.autosave !== false ? 'checked' : ''}> Автозбереження</label></div>
           <div class="fgr"><label><input type="checkbox" id="setSound" ${s.sound !== false ? 'checked' : ''}> Звук таймера</label></div>
         </div>
-        <div class="fa"><button class="btn btn-p" data-action="save-settings">Зберегти</button></div>
+        <div class="fa"><button type="button" class="btn btn-p" data-action="save-settings">Зберегти</button></div>
       </div>
       <div class="card"><div class="ct">Дані</div>
-        <div class="fa">
+        <div class="fa" style="flex-direction:column;align-items:stretch;gap:10px">
           <div class="data-io glass-io">
             <button type="button" class="btn btn-p data-io-btn" data-action="export">Експорт JSON</button>
             <button type="button" class="btn btn-s data-io-btn" data-action="import-trigger" id="btnImportJson">Імпорт JSON</button>
-            <p class="note-sm">На iPhone оберіть файл із «Файли» / iCloud Drive. Дані не затруть склад без успішного парсингу.</p>
           </div>
-          <button class="btn btn-d" data-action="reset-all">Скинути все</button>
+          <p class="note-sm">На iPhone: «Файли» / iCloud Drive. Перед імпортом створюється резервна копія.</p>
+          <button type="button" class="btn btn-d" data-action="reset-all">Скинути все</button>
         </div>
       </div>
       <div class="card"><div class="ct">Ролі та Telegram (RBAC)</div>
-        <p class="note-sm" style="margin-bottom:10px">Порожній список тренерів = усі користувачі Telegram мають повний доступ (режим налаштування). Додайте Telegram ID або @username тренерів, щоб обмежити редагування.</p>
-        <div class="fgr full"><label>Telegram ID / @username тренерів (через кому)</label>
-          <input type="text" id="setCoaches" value="${sanitize(((s.settings.rbac||{}).coaches||[]).join(', '))}" placeholder="123456789, @coach_nick">
+        <p class="note-sm" style="margin-bottom:10px">Порожній список тренерів = повний доступ усім. Додайте Telegram ID або @username.</p>
+        <div class="fgr full"><label>Тренері (через кому)</label>
+          <input type="text" id="setCoaches" value="${coachesStr}" placeholder="123456789, @coach_nick">
         </div>
-        <div class="fgr full"><label>Прив'язка гравців (JSON: {"telegramId":"playerId"})</label>
-          <textarea id="setPlayerLinks" rows="3" placeholder='{"123":"p01","@player":"p07"}'>${sanitize(JSON.stringify(((s.settings.rbac||{}).playerLinks)||{}, null, 0))}</textarea>
+        <div class="fgr full"><label>Прив'язка гравців (JSON)</label>
+          <textarea id="setPlayerLinks" rows="3" placeholder='{"123":"p01"}'>${linksStr}</textarea>
         </div>
         <p class="note-sm">Поточний користувач: <strong id="rbacMe">—</strong></p>
         <button type="button" class="btn btn-s" data-action="save-rbac">Зберегти ролі</button>
@@ -340,10 +348,24 @@ const Views = {
       <div class="card"><div class="ct">Про застосунок</div>
         <p style="font-size:12px;color:var(--muted);line-height:1.6">
           Тренерська платформа · МЕТАЛІСТ ШТУТГАРТ<br>
-          Schema v${SCHEMA_VERSION} · localStorage · Vanilla JS<br>
+          Schema v${typeof SCHEMA_VERSION !== 'undefined' ? SCHEMA_VERSION : 2} · localStorage · Telegram Cloud<br>
           Production-quality prototype
         </p>
       </div>`;
+    } catch (e) {
+      console.error('[Views.settings]', e);
+      return `
+        <div class="st">Налаштування</div>
+        <div class="card">
+          <div class="ct">Помилка відображення</div>
+          <p class="note-sm">${sanitize(e && e.message ? e.message : String(e))}</p>
+          <div class="data-io glass-io" style="margin-top:12px">
+            <button type="button" class="btn btn-p data-io-btn" data-action="export">Експорт JSON</button>
+            <button type="button" class="btn btn-s data-io-btn" data-action="import-trigger">Імпорт JSON</button>
+          </div>
+          <button type="button" class="btn btn-s" data-action="save-settings" style="margin-top:8px">Спробувати зберегти</button>
+        </div>`;
+    }
   },
 
   /* ─── 3-DEFENDER / MY EX / DIARY ─── */
