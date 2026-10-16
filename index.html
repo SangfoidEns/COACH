@@ -13,8 +13,8 @@
 
 <div class="app" id="app">
 <header class="header header-2tier glass-hdr" id="appHeader">
-  <!-- Tier 1: Brand + Coach (click → board) | Menu -->
-  <div class="hdr-top">
+  <!-- ROW 1: Brand (→ board) | Clock + Next training -->
+  <div class="hdr-row hdr-row-1">
     <button type="button" class="brand-hit" id="club-logo-btn" data-action="open-default-board"
       title="Відкрити тактичну дошку" aria-label="Відкрити тактичну дошку">
       <span class="logo-ph" id="clubLogo" aria-hidden="true">МШ</span>
@@ -23,37 +23,39 @@
         <span class="brand-coach" id="authBadge">Тренер: —</span>
       </span>
     </button>
+    <div class="hdr-meta-right" aria-live="polite">
+      <div class="st-line st-clock" id="clock"><strong>—</strong></div>
+      <div class="st-line st-next" id="nextTr">Наступне: <strong>—</strong></div>
+    </div>
+  </div>
+  <!-- ROW 2: Timers | Menu ☰ -->
+  <div class="hdr-row hdr-row-2" aria-label="Таймери">
+    <div class="hdr-timers">
+      <div class="ht-block" data-timer="session">
+        <span class="ht-label">Сесія</span>
+        <span class="ht-time" id="timerMain">00:00</span>
+        <div class="ht-btns" role="group">
+          <button type="button" class="ht-btn" data-action="timer-start" title="Старт">▶</button>
+          <button type="button" class="ht-btn" data-action="timer-pause" title="Пауза">⏸</button>
+          <button type="button" class="ht-btn" data-action="timer-reset" title="Скинути">↻</button>
+          <button type="button" class="ht-btn" data-action="timer-add" data-sec="30" title="+30 с">+30</button>
+        </div>
+      </div>
+      <div class="ht-sep" aria-hidden="true"></div>
+      <div class="ht-block" data-timer="exercise">
+        <span class="ht-label">Вправа</span>
+        <span class="ht-time" id="timerEx">00:00</span>
+        <div class="ht-btns" role="group">
+          <button type="button" class="ht-btn" data-action="extimer-start" title="Старт">▶</button>
+          <button type="button" class="ht-btn" data-action="extimer-pause" title="Пауза">⏸</button>
+          <button type="button" class="ht-btn" data-action="extimer-reset" title="Скинути">↻</button>
+        </div>
+      </div>
+    </div>
     <button type="button" class="hdr-menu-btn" id="btnMainMenu" data-action="toggle-sidebar"
       aria-label="Меню" title="Меню">
       <span class="menu-ico" aria-hidden="true">☰</span>
     </button>
-  </div>
-  <!-- Tier 2: Clock + Next training + Timers -->
-  <div class="hdr-bottom" aria-label="Статус і таймери">
-    <div class="hdr-status-inline" aria-live="polite">
-      <div class="st-line" id="clock"><strong>—</strong></div>
-      <div class="st-line st-next" id="nextTr">Наступне: <strong>—</strong></div>
-    </div>
-    <div class="ht-block" data-timer="session">
-      <span class="ht-label">Сесія</span>
-      <span class="ht-time" id="timerMain">00:00</span>
-      <div class="ht-btns" role="group" aria-label="Керування сесією">
-        <button type="button" class="ht-btn" data-action="timer-start" title="Старт">▶</button>
-        <button type="button" class="ht-btn" data-action="timer-pause" title="Пауза">⏸</button>
-        <button type="button" class="ht-btn" data-action="timer-reset" title="Скинути">↻</button>
-        <button type="button" class="ht-btn" data-action="timer-add" data-sec="30" title="+30 с">+30</button>
-      </div>
-    </div>
-    <div class="ht-sep" aria-hidden="true"></div>
-    <div class="ht-block" data-timer="exercise">
-      <span class="ht-label">Вправа</span>
-      <span class="ht-time" id="timerEx">00:00</span>
-      <div class="ht-btns" role="group" aria-label="Керування вправою">
-        <button type="button" class="ht-btn" data-action="extimer-start" title="Старт">▶</button>
-        <button type="button" class="ht-btn" data-action="extimer-pause" title="Пауза">⏸</button>
-        <button type="button" class="ht-btn" data-action="extimer-reset" title="Скинути">↻</button>
-      </div>
-    </div>
   </div>
 </header>
 
