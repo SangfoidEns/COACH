@@ -75,26 +75,43 @@ const App = {
 
   /** Логотип / назва клубу → тактична дошка з дефолтною схемою */
   bindLogoAndImport() {
-    // Логотип → дошка (не під час IO)
+    // Логотип → дошка (pointerdown + click, Android/iOS/Windows)
     const logo = document.getElementById('club-logo-btn') || document.querySelector('[data-action="open-default-board"]');
     if (logo && !logo._msBound) {
       logo._msBound = true;
-      const open = (e) => {
+      let armed = false;
+      const openBoard = (e) => {
         if (typeof StorageManager !== 'undefined' && StorageManager.isIoLocked && StorageManager.isIoLocked()) {
-          e.preventDefault();
-          e.stopPropagation();
+          if (e) { e.preventDefault(); e.stopPropagation(); }
           return;
         }
-        e.preventDefault();
-        e.stopPropagation();
-        this.openDefaultBoard();
+        if (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+        }
+        try { this.openDefaultBoard(); } catch (err) { console.error(err); }
       };
-      logo.addEventListener('click', open);
+      // pointerdown: швидший відгук на touch; не відкриваємо на scroll
+      logo.addEventListener('pointerdown', (e) => {
+        if (e.button != null && e.button !== 0) return;
+        armed = true;
+      }, { passive: true });
+      logo.addEventListener('pointerup', (e) => {
+        if (!armed) return;
+        armed = false;
+        openBoard(e);
+      });
+      logo.addEventListener('pointercancel', () => { armed = false; });
+      logo.addEventListener('click', (e) => {
+        // fallback якщо pointerup не спрацював (деякі WebView)
+        openBoard(e);
+      });
       logo.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           if (StorageManager.isIoLocked && StorageManager.isIoLocked()) return;
           e.preventDefault();
-          this.openDefaultBoard();
+          openBoard(e);
         }
       });
     }
@@ -201,9 +218,12 @@ const App = {
       logo.textContent = s.clubShort;
     }
     const parts = s.clubName.split(' ');
-    document.getElementById('clubName').innerHTML = parts.length > 1
-      ? sanitize(parts[0]) + ' <span>' + sanitize(parts.slice(1).join(' ')) + '</span>'
-      : sanitize(s.clubName);
+    const cn = document.getElementById('clubName');
+    if (cn) {
+      cn.innerHTML = parts.length > 1
+        ? sanitize(parts[0]) + ' <em>' + sanitize(parts.slice(1).join(' ')) + '</em>'
+        : sanitize(s.clubName);
+    }
   },
 
 

@@ -12,34 +12,42 @@
 <body>
 
 <div class="app" id="app">
-<header class="header header-2tier" id="appHeader">
+<header class="header header-2tier glass-hdr" id="appHeader">
   <div class="hdr-top">
-    <button type="button" class="logo-area logo-board-entry" id="club-logo-btn" data-action="open-default-board" title="Відкрити тактичну дошку" aria-label="Відкрити тактичну дошку">
-      <div class="logo-ph" id="clubLogo" aria-hidden="true">МШ</div>
-      <div class="club-name" id="clubName">МЕТАЛІСТ <span>ШТУТГАРТ</span></div>
+    <button type="button" class="brand-hit" id="club-logo-btn" data-action="open-default-board"
+      title="Відкрити тактичну дошку" aria-label="Відкрити тактичну дошку">
+      <span class="logo-ph" id="clubLogo" aria-hidden="true">МШ</span>
+      <span class="brand-text">
+        <span class="brand-title" id="clubName">МЕТАЛІСТ <em>ШТУТГАРТ</em></span>
+        <span class="brand-hint">Тактична дошка ↗</span>
+      </span>
     </button>
-    <div class="hdr-center">
-      <div class="dt dt-clock" id="clock"><strong>—</strong></div>
-      <div class="dt dt-next" id="nextTr">Наступне: <strong>—</strong></div>
-      <div class="auth-badge" id="authBadge" title="Користувач">—</div>
+    <div class="hdr-status" aria-live="polite">
+      <div class="st-line" id="clock"><strong>—</strong></div>
+      <div class="st-line st-next" id="nextTr">Наступне: <strong>—</strong></div>
+      <div class="st-user auth-badge" id="authBadge" title="Користувач">—</div>
     </div>
-    <button type="button" class="hdr-menu-btn" data-action="toggle-sidebar" aria-label="Меню" title="Меню">☰</button>
+    <button type="button" class="hdr-menu-btn" id="btnMainMenu" data-action="toggle-sidebar"
+      aria-label="Меню" title="Меню">
+      <span class="menu-ico" aria-hidden="true">☰</span>
+    </button>
   </div>
-  <div class="hdr-bottom" aria-label="Таймери">
-    <div class="ht-block">
+  <div class="hdr-bottom" aria-label="Таймери сесії">
+    <div class="ht-block" data-timer="session">
       <span class="ht-label">Сесія</span>
       <span class="ht-time" id="timerMain">00:00</span>
-      <div class="ht-btns">
+      <div class="ht-btns" role="group" aria-label="Керування сесією">
         <button type="button" class="ht-btn" data-action="timer-start" title="Старт">▶</button>
         <button type="button" class="ht-btn" data-action="timer-pause" title="Пауза">⏸</button>
         <button type="button" class="ht-btn" data-action="timer-reset" title="Скинути">↻</button>
         <button type="button" class="ht-btn" data-action="timer-add" data-sec="30" title="+30 с">+30</button>
       </div>
     </div>
-    <div class="ht-block">
+    <div class="ht-sep" aria-hidden="true"></div>
+    <div class="ht-block" data-timer="exercise">
       <span class="ht-label">Вправа</span>
       <span class="ht-time" id="timerEx">00:00</span>
-      <div class="ht-btns">
+      <div class="ht-btns" role="group" aria-label="Керування вправою">
         <button type="button" class="ht-btn" data-action="extimer-start" title="Старт">▶</button>
         <button type="button" class="ht-btn" data-action="extimer-pause" title="Пауза">⏸</button>
         <button type="button" class="ht-btn" data-action="extimer-reset" title="Скинути">↻</button>
