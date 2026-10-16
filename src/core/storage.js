@@ -341,6 +341,7 @@ const StorageManager = {
   },
 
   async exportJSON() {
+    this.beginIoLock(3000);
     try {
       this.createBackup();
       const payload = this.buildExportPayload();
@@ -519,65 +520,89 @@ const StorageManager = {
 
 
   /** Чи iOS / Telegram WebView — без showOpenFilePicker */
+  /** iOS / Telegram WebView */
   _isMobileWebView() {
     try {
       if (typeof TelegramManager !== 'undefined' && TelegramManager.isTelegram) return true;
       const ua = navigator.userAgent || '';
-      return /iPhone|iPad|iPod|Android/i.test(ua) || (!!navigator.standalone);
+      return /iPhone|iPad|iPod|Android/i.test(ua);
     } catch (_) { return true; }
   },
 
-  /** Постійний file input (не зникає після re-render views) */
+  /** Блокування роутера під час файлових операцій (iOS повертає focus і «клікає» логотип) */
+  _ioLock: false,
+  _ioLockTimer: null,
+  beginIoLock(ms) {
+    this._ioLock = true;
+    clearTimeout(this._ioLockTimer);
+    this._ioLockTimer = setTimeout(() => { this._ioLock = false; }, ms || 2500);
+    try { document.body.classList.add('ms-io-lock'); } catch (_) {}
+  },
+  endIoLock() {
+    clearTimeout(this._ioLockTimer);
+    this._ioLock = false;
+    try { document.body.classList.remove('ms-io-lock'); } catch (_) {}
+  },
+  isIoLocked() { return !!this._ioLock; },
+
+  /**
+   * Єдиний прихований input для iOS / Telegram.
+   * id="ios-json-input" — поза будь-яким view, ніколи не remount-иться.
+   */
   _ensureImportInput() {
-    let inp = document.getElementById('importFilePermanent');
+    let inp = document.getElementById('ios-json-input');
     if (inp) return inp;
     inp = document.createElement('input');
     inp.type = 'file';
-    inp.id = 'importFilePermanent';
-    inp.accept = 'application/json,.json,text/plain,text/json,*/*';
+    inp.id = 'ios-json-input';
+    inp.accept = '.json,application/json,text/json,text/plain,*/*';
     inp.setAttribute('aria-hidden', 'true');
-    inp.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;opacity:0.01;z-index:0;pointer-events:none';
+    inp.tabIndex = -1;
+    inp.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;opacity:0;pointer-events:none;border:0;padding:0;margin:0;';
     document.body.appendChild(inp);
-    inp.addEventListener('change', (e) => {
+    inp.addEventListener('change', (event) => {
       try {
-        const f = e.target.files && e.target.files[0];
-        e.target.value = '';
-        if (!f) {
-          Toast.show('Файл не вибрано', 'warn');
-          return;
-        }
-        this.importJSON(f);
-      } catch (err) {
-        Toast.show('Помилка читання файлу: ' + (err.message || err), 'err');
+        if (event && event.preventDefault) event.preventDefault();
+        if (event && event.stopPropagation) event.stopPropagation();
+      } catch (_) {}
+      const file = event.target.files && event.target.files[0];
+      const clear = () => { try { event.target.value = ''; } catch (_) {} };
+      if (!file) {
+        clear();
+        this.endIoLock();
+        return;
       }
+      this.beginIoLock(4000);
+      this.importJSON(file).finally(() => {
+        clear();
+        // тримаємо lock ще трохи, поки iOS повертає фокус
+        setTimeout(() => this.endIoLock(), 800);
+      });
     });
     return inp;
   },
 
   /**
-   * Вибір файлу JSON.
-   * На iPhone / Telegram — ТІЛЬКИ hidden input + синхронний click() у межах user gesture.
-   * showOpenFilePicker на iOS часто ламає жест і «нічого не відбувається».
+   * Відкрити вибір файлу. Викликати СИНХРОННО з user gesture.
+   * Не викликає navigate / openDefaultBoard.
    */
   pickAndImportJSON() {
+    this.beginIoLock(5000);
     try {
-      // Desktop Chrome only
       if (!this._isMobileWebView() && typeof window.showOpenFilePicker === 'function') {
         window.showOpenFilePicker({
           multiple: false,
-          types: [{
-            description: 'JSON',
-            accept: { 'application/json': ['.json'], 'text/plain': ['.json', '.txt'] }
-          }]
+          types: [{ description: 'JSON', accept: { 'application/json': ['.json'], 'text/plain': ['.json', '.txt'] } }]
         }).then(async (handles) => {
           if (handles && handles[0]) {
             const file = await handles[0].getFile();
-            this.importJSON(file);
+            await this.importJSON(file);
           }
         }).catch((e) => {
           if (e && e.name === 'AbortError') return;
-          // fallback input
           this._triggerFileInput();
+        }).finally(() => {
+          setTimeout(() => this.endIoLock(), 600);
         });
         return;
       }
@@ -591,14 +616,12 @@ const StorageManager = {
     try {
       const inp = this._ensureImportInput();
       inp.value = '';
-      // iOS: click must be direct/synchronous from user gesture
-      const ev = new MouseEvent('click', { view: window, bubbles: true, cancelable: true });
-      inp.dispatchEvent(ev);
-      // деякі WebView ігнорують dispatchEvent
-      if (typeof inp.click === 'function') inp.click();
+      // Синхронний click у межах жесту (критично для iOS)
+      inp.click();
     } catch (e2) {
       console.error(e2);
-      Toast.show('Не вдалося відкрити вибір файлу. Спробуйте ще раз.', 'err');
+      Toast.show('Не вдалося відкрити вибір файлу', 'err');
+      this.endIoLock();
     }
   },
 
@@ -608,8 +631,8 @@ const StorageManager = {
         const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
         if (!data || typeof data !== 'object') throw new Error('Невірний формат JSON');
         // мінімальна валідація структури експорту
-        if (!data.players && !data.activeBoard && !data.schemaVersion && !data.trainings) {
-          throw new Error('Файл не схожий на експорт МЕТАЛІСТ ШТУТГАРТ');
+        if (!data.players && !data.activeBoard && !data.schemaVersion && !data.trainings && !data.boards && !data.schemes) {
+          throw new Error('Некоректний формат JSON файлу');
         }
         this.createBackup();
         const migrated = this.migrate(data, data.schemaVersion || 1);
@@ -626,7 +649,7 @@ const StorageManager = {
         try { App.applyBranding(); } catch (_) {}
         try { App.renderCurrent(); } catch (_) {}
         try { this.pushToCloud(this._buildLocalPayload()); } catch (_) {}
-        Toast.show('Склад та схеми успішно імпортовано!', 'ok');
+        Toast.show('Успішно! Дані повністю оновлено.', 'ok');
         return true;
       } catch (e) {
         try { ErrorManager.log('import', e); } catch (_) {}
@@ -635,47 +658,75 @@ const StorageManager = {
       }
     };
 
-    // Рядок JSON напряму (вставка / TMA)
-    if (typeof fileOrText === 'string') {
-      applyData(fileOrText);
-      return;
-    }
-    if (!fileOrText) {
-      Toast.show('Файл не вибрано', 'err');
-      return;
-    }
+    return new Promise((resolve) => {
+      const done = (ok) => resolve(!!ok);
 
-    // File / Blob
-    const reader = new FileReader();
-    reader.onerror = () => Toast.show('Не вдалося прочитати файл', 'err');
-    reader.onload = ev => {
-      const text = ev.target && ev.target.result;
-      if (text == null || text === '') {
-        Toast.show('Порожній файл', 'err');
+      // Рядок JSON напряму
+      if (typeof fileOrText === 'string') {
+        done(applyData(fileOrText));
         return;
       }
-      applyData(String(text));
-    };
-    try {
-      reader.readAsText(fileOrText, 'UTF-8');
-    } catch (e) {
-      // Fallback: arrayBuffer → decode
-      try {
-        const r2 = new FileReader();
-        r2.onload = ev2 => {
-          try {
-            const buf = ev2.target.result;
-            const text = new TextDecoder('utf-8').decode(buf);
-            applyData(text);
-          } catch (e2) {
-            Toast.show('Помилка імпорту: ' + e2.message, 'err');
-          }
-        };
-        r2.readAsArrayBuffer(fileOrText);
-      } catch (e3) {
-        Toast.show('Імпорт недоступний у цьому середовищі', 'err');
+      if (!fileOrText) {
+        Toast.show('Файл не вибрано', 'err');
+        done(false);
+        return;
       }
-    }
+
+      const readText = async () => {
+        try {
+          if (typeof fileOrText.text === 'function') {
+            const text = await fileOrText.text();
+            if (!text) { Toast.show('Порожній файл', 'err'); return false; }
+            return applyData(String(text));
+          }
+        } catch (e) {
+          console.warn('[import] file.text', e);
+        }
+        return await new Promise((res) => {
+          const reader = new FileReader();
+          reader.onerror = () => {
+            Toast.show('Помилка зчитування файлу на iOS', 'err');
+            res(false);
+          };
+          reader.onload = (ev) => {
+            const text = ev.target && ev.target.result;
+            if (text == null || text === '') {
+              Toast.show('Порожній файл', 'err');
+              res(false);
+              return;
+            }
+            res(applyData(String(text)));
+          };
+          try {
+            reader.readAsText(fileOrText, 'UTF-8');
+          } catch (e) {
+            try {
+              const r2 = new FileReader();
+              r2.onload = (ev2) => {
+                try {
+                  const text = new TextDecoder('utf-8').decode(ev2.target.result);
+                  res(applyData(text));
+                } catch (e2) {
+                  Toast.show('Помилка зчитування файлу на iOS', 'err');
+                  res(false);
+                }
+              };
+              r2.onerror = () => { Toast.show('Помилка зчитування файлу на iOS', 'err'); res(false); };
+              r2.readAsArrayBuffer(fileOrText);
+            } catch (e3) {
+              Toast.show('Імпорт недоступний у цьому середовищі', 'err');
+              res(false);
+            }
+          }
+        });
+      };
+
+      readText().then(done).catch((err) => {
+        console.error('JSON Import Error:', err);
+        Toast.show('Помилка зчитування файлу на iOS', 'err');
+        done(false);
+      });
+    });
   },
 
 

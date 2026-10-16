@@ -2167,3 +2167,12 @@ body.mode-board-focus .header.header-2tier {
   #club-logo-btn .club-name span { display: none; }
   .hdr-center .auth-badge { display: none; }
 }
+
+/* Під час file IO — логотип не ловить «фантомний» клік після iOS picker */
+body.ms-io-lock #club-logo-btn,
+body.ms-io-lock [data-action="open-default-board"] {
+  pointer-events: none !important;
+}
+body.ms-io-lock .logo-area {
+  pointer-events: none !important;
+}

@@ -75,38 +75,83 @@ const App = {
 
   /** Логотип / назва клубу → тактична дошка з дефолтною схемою */
   bindLogoAndImport() {
+    // Логотип → дошка (не під час IO)
     const logo = document.getElementById('club-logo-btn') || document.querySelector('[data-action="open-default-board"]');
     if (logo && !logo._msBound) {
       logo._msBound = true;
       const open = (e) => {
+        if (typeof StorageManager !== 'undefined' && StorageManager.isIoLocked && StorageManager.isIoLocked()) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
         e.preventDefault();
         e.stopPropagation();
         this.openDefaultBoard();
       };
       logo.addEventListener('click', open);
       logo.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this.openDefaultBoard(); }
+        if (e.key === 'Enter' || e.key === ' ') {
+          if (StorageManager.isIoLocked && StorageManager.isIoLocked()) return;
+          e.preventDefault();
+          this.openDefaultBoard();
+        }
       });
     }
-    // Імпорт: делегація + id
-    document.addEventListener('click', (e) => {
-      const btn = e.target.closest('#btnImportJson, [data-action="import-trigger"]');
-      if (!btn) return;
-      e.preventDefault();
-      e.stopPropagation();
-      e.stopImmediatePropagation();
-      if (typeof AuthManager !== 'undefined' && !AuthManager.can('import-export')) {
-        Toast.show('Імпорт доступний лише тренеру', 'warn');
-        return;
-      }
-      try { StorageManager.pickAndImportJSON(); } catch (err) {
-        Toast.show('Імпорт: ' + (err.message || err), 'err');
-      }
-    }, true); // capture phase — раніше за navigate
+
+    // CAPTURE: Імпорт / Експорт — повна ізоляція від роутера
+    if (!document._msIoCapture) {
+      document._msIoCapture = true;
+      document.addEventListener('click', (e) => {
+        const exp = e.target.closest('#btnExportJson, [data-io="export"], [data-action="export"]');
+        const imp = e.target.closest('#btnImportJson, [data-io="import"], [data-action="import-trigger"]');
+        if (!exp && !imp) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+
+        // Не відкривати дошку
+        try {
+          if (typeof StorageManager !== 'undefined') StorageManager.beginIoLock(5000);
+        } catch (_) {}
+
+        if (exp) {
+          if (typeof AuthManager !== 'undefined' && !AuthManager.can('import-export')) {
+            Toast.show('Експорт доступний лише тренеру', 'warn');
+            return;
+          }
+          try {
+            StorageManager.exportJSON();
+          } catch (err) {
+            Toast.show('Експорт: ' + (err.message || err), 'err');
+          }
+          return;
+        }
+
+        if (imp) {
+          if (typeof AuthManager !== 'undefined' && !AuthManager.can('import-export')) {
+            Toast.show('Імпорт доступний лише тренеру', 'warn');
+            return;
+          }
+          try {
+            StorageManager.pickAndImportJSON();
+          } catch (err) {
+            Toast.show('Імпорт: ' + (err.message || err), 'err');
+          }
+        }
+      }, true);
+    }
+
+    try { StorageManager._ensureImportInput(); } catch (_) {}
   },
 
   openDefaultBoard() {
     try {
+      if (typeof StorageManager !== 'undefined' && StorageManager.isIoLocked && StorageManager.isIoLocked()) {
+        console.warn('[openDefaultBoard] blocked during IO');
+        return;
+      }
       const s = Store.get();
       if (!s || !s.activeBoard) {
         this.navigate('board');
@@ -338,6 +383,15 @@ const App = {
   },
 
   navigate(view) {
+    // iOS: після file picker focus може «клікнути» логотип — блокуємо
+    try {
+      if (typeof StorageManager !== 'undefined' && StorageManager.isIoLocked && StorageManager.isIoLocked()) {
+        if (view === 'board') {
+          console.warn('[navigate] blocked during IO lock');
+          return;
+        }
+      }
+    } catch (_) {}
     Store.get().ui.view = view;
     document.querySelectorAll('.view').forEach(v => v.classList.remove('on'));
     const el = document.getElementById('v-' + view);
@@ -501,22 +555,10 @@ const App = {
       if (action === 'new-match') return Actions.newMatch();
       if (action === 'new-event') return Actions.newEvent();
       if (action === 'toggle-rp') return document.getElementById('rightPanel').classList.toggle('force');
-      if (action === 'export') {
-        if (typeof AuthManager !== 'undefined' && !AuthManager.can('import-export')) {
-          return Toast.show('Експорт доступний лише тренеру', 'warn');
-        }
-        return StorageManager.exportJSON();
-      }
-      if (action === 'import-trigger') {
+      // export / import — обробляються лише в capture (bindLogoAndImport), тут ігнор
+      if (action === 'export' || action === 'import-trigger') {
         e.preventDefault();
         e.stopPropagation();
-        if (typeof AuthManager !== 'undefined' && !AuthManager.can('import-export')) {
-          return Toast.show('Імпорт доступний лише тренеру', 'warn');
-        }
-        // Синхронно в межах click gesture (критично для iPhone)
-        try { StorageManager.pickAndImportJSON(); } catch (err) {
-          Toast.show('Імпорт: ' + (err.message || err), 'err');
-        }
         return;
       }
       if (action === 'open-default-board') {

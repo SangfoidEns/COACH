@@ -327,8 +327,8 @@ const Views = {
       <div class="card"><div class="ct">Дані</div>
         <div class="fa" style="flex-direction:column;align-items:stretch;gap:10px">
           <div class="data-io glass-io">
-            <button type="button" class="btn btn-p data-io-btn" data-action="export">Експорт JSON</button>
-            <button type="button" class="btn btn-s data-io-btn" data-action="import-trigger" id="btnImportJson">Імпорт JSON</button>
+            <button type="button" class="btn btn-p data-io-btn" id="btnExportJson" data-io="export" data-action="export">Експорт JSON</button>
+            <button type="button" class="btn btn-s data-io-btn" id="btnImportJson" data-io="import" data-action="import-trigger">Імпорт JSON</button>
           </div>
           <p class="note-sm">На iPhone: «Файли» / iCloud Drive. Перед імпортом створюється резервна копія.</p>
           <button type="button" class="btn btn-d" data-action="reset-all">Скинути все</button>
@@ -360,8 +360,8 @@ const Views = {
           <div class="ct">Помилка відображення</div>
           <p class="note-sm">${sanitize(e && e.message ? e.message : String(e))}</p>
           <div class="data-io glass-io" style="margin-top:12px">
-            <button type="button" class="btn btn-p data-io-btn" data-action="export">Експорт JSON</button>
-            <button type="button" class="btn btn-s data-io-btn" data-action="import-trigger">Імпорт JSON</button>
+            <button type="button" class="btn btn-p data-io-btn" data-io="export" data-action="export">Експорт JSON</button>
+            <button type="button" class="btn btn-s data-io-btn" data-io="import" data-action="import-trigger">Імпорт JSON</button>
           </div>
           <button type="button" class="btn btn-s" data-action="save-settings" style="margin-top:8px">Спробувати зберегти</button>
         </div>`;
