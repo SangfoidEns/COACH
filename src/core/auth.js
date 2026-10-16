@@ -127,8 +127,8 @@ const AuthManager = {
       document.body.classList.toggle('role-player', this.isPlayer());
       const el = document.getElementById('authBadge');
       if (el) {
-        el.innerHTML = '<span class="auth-role">' + this.roleLabel() + '</span> · ' +
-          '<span class="auth-name">' + (typeof sanitize === 'function' ? sanitize(this.displayName()) : this.displayName()) + '</span>';
+        const name = typeof sanitize === 'function' ? sanitize(this.displayName()) : this.displayName();
+        el.innerHTML = '<span class="auth-role">' + this.roleLabel() + '</span>: ' + name;
         el.title = this.user ? ('Telegram ID: ' + this.user.id) : 'Без Telegram';
       }
     } catch (_) {}

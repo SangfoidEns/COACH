@@ -207,17 +207,33 @@ const App = {
           (AuthManager.user ? ' · ID ' + AuthManager.user.id : '');
       }
     } catch (_) {}
+    // Бейдж тренера біля назви клубу (всередині brand-hit)
+    try {
+      const badge = document.getElementById('authBadge');
+      if (badge) {
+        if (typeof AuthManager !== 'undefined') {
+          const role = AuthManager.roleLabel();
+          const name = AuthManager.displayName();
+          badge.innerHTML = '<span class="auth-role">' + sanitize(role) + '</span>: ' + sanitize(name);
+          badge.title = AuthManager.user ? ('Telegram ID: ' + AuthManager.user.id) : 'Локальний режим';
+        } else {
+          badge.textContent = 'Тренер: —';
+        }
+      }
+    } catch (_) {}
     const s = Store.get().settings;
     document.documentElement.style.setProperty('--club-primary', s.primary);
     document.documentElement.style.setProperty('--club-secondary', s.accent);
     document.documentElement.style.setProperty('--club-accent', s.accent);
     const logo = document.getElementById('clubLogo');
-    if (s.logoData) {
-      logo.innerHTML = `<img src="${s.logoData}" alt="logo">`;
-    } else {
-      logo.textContent = s.clubShort;
+    if (logo) {
+      if (s.logoData) {
+        logo.innerHTML = '<img src="' + s.logoData + '" alt="logo">';
+      } else {
+        logo.textContent = s.clubShort || 'МШ';
+      }
     }
-    const parts = s.clubName.split(' ');
+    const parts = (s.clubName || 'МЕТАЛІСТ ШТУТГАРТ').split(' ');
     const cn = document.getElementById('clubName');
     if (cn) {
       cn.innerHTML = parts.length > 1
