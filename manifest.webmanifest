@@ -1,0 +1,14 @@
+{
+  "name": "METALIST STUTTGART — Coaching Platform",
+  "short_name": "Metalist Coach",
+  "description": "Цифрова платформа футбольного тренера",
+  "lang": "uk",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0b0d0c",
+  "theme_color": "#0b0d0c",
+  "icons": [
+    { "src": "./assets/metalist-mark.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
