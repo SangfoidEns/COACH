@@ -49,6 +49,34 @@ const Views = {
   },
 
   /** FIFA + iOS Glass картка гравця */
+  _resolvePlayerAvatar(p) {
+    if (!p) return '';
+    if (p.telegramPhotoUrl) return p.telegramPhotoUrl;
+    if (p.photoUrl) return p.photoUrl;
+    try {
+      if (typeof AuthManager !== 'undefined' && AuthManager.getLinkedPlayer) {
+        const me = AuthManager.getLinkedPlayer();
+        if (me && me.id === p.id && typeof TelegramManager !== 'undefined') {
+          const url = TelegramManager.getUserPhotoUrl && TelegramManager.getUserPhotoUrl();
+          if (url) return url;
+        }
+      }
+      // якщо нік збігається з поточним TG-користувачем
+      if (typeof TelegramManager !== 'undefined' && TelegramManager.getUser) {
+        const u = TelegramManager.getUser();
+        if (u && u.photo_url && p.telegramUsername) {
+          const a = String(p.telegramUsername).replace(/^@/, '').toLowerCase();
+          const b = String(u.username || '').replace(/^@/, '').toLowerCase();
+          if (a && b && a === b) return u.photo_url;
+        }
+        if (u && u.photo_url && p.telegramId && String(p.telegramId) === String(u.id)) {
+          return u.photo_url;
+        }
+      }
+    } catch (_) {}
+    return '';
+  },
+
   _fifaCard(p, stats) {
     if (!p) return '';
     const st = p.status || 'available';
@@ -63,6 +91,10 @@ const Views = {
     const cap = p.isCaptain ? '<span class="fifa-cap">C</span>' : '';
     const tg = p.telegramUsername ? '@' + sanitize(p.telegramUsername) : '';
     const posColor = ({ GK: '#f1c40f', CB: '#3498db', LB: '#3498db', RB: '#3498db', DM: '#2ecc71', CM: '#2ecc71', AM: '#2ecc71', LW: '#e74c3c', RW: '#e74c3c', ST: '#e74c3c' })[pos] || '#c8a84b';
+    const photo = this._resolvePlayerAvatar(p);
+    const avatarInner = photo
+      ? `<img class="fifa-avatar-img" src="${sanitize(photo)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display='none';this.nextElementSibling&&(this.nextElementSibling.style.display='flex')"/><span class="fifa-avatar-fallback" style="display:none">${sanitize(initials.toUpperCase())}</span>`
+      : `<span>${sanitize(initials.toUpperCase())}</span>`;
 
     return `
       <div class="fifa-card glass">
@@ -73,7 +105,7 @@ const Views = {
             <span class="fifa-pos" style="color:${posColor}">${sanitize(pos)}</span>
           </div>
           <div class="fifa-avatar" style="background:linear-gradient(145deg,${posColor}55,${posColor}22)">
-            <span>${sanitize(initials.toUpperCase())}</span>
+            ${avatarInner}
             ${cap}
           </div>
           <div class="fifa-club">
@@ -96,6 +128,101 @@ const Views = {
         </div>
       </div>`;
   },
+
+  _statBar(label, value, max, color) {
+    const v = Math.max(0, Math.min(max, Number(value) || 0));
+    const pct = max > 0 ? Math.round((v / max) * 100) : 0;
+    return `<div class="stat-bar-row">
+      <div class="stat-bar-label">${sanitize(label)}</div>
+      <div class="stat-bar-track"><div class="stat-bar-fill" style="width:${pct}%;background:${color || 'var(--club-secondary)'}"></div></div>
+      <div class="stat-bar-val">${Number.isFinite(v) ? (Number.isInteger(v) ? v : v.toFixed(1)) : '—'}</div>
+    </div>`;
+  },
+
+  _compareBlock(me, otherId) {
+    const s = Store.get();
+    if (!me) return '';
+    const others = (s.players || []).filter(p => p.id !== me.id).sort((a, b) => (a.number || 0) - (b.number || 0));
+    const opts = others.map(p =>
+      `<option value="${p.id}" ${otherId === p.id ? 'selected' : ''}>#${p.number || '—'} ${sanitize(p.lastName || p.firstName || '')}</option>`
+    ).join('');
+    const other = otherId ? others.find(p => p.id === otherId) : null;
+    const a = this._playerStats(me.id);
+    const b = other ? this._playerStats(other.id) : null;
+    const condA = me.readiness != null ? me.readiness : (me.condition != null ? me.condition : 80);
+    const condB = other ? (other.readiness != null ? other.readiness : (other.condition != null ? other.condition : 80)) : 0;
+
+    let charts = '';
+    if (other && b) {
+      charts = `
+        <div class="compare-grid">
+          <div class="compare-col">
+            <div class="compare-name">Ви · #${me.number || ''}</div>
+            ${this._statBar('Готовність %', condA, 100, '#2ecc71')}
+            ${this._statBar('Відвідування %', a.attPct || 0, 100, '#3498db')}
+            ${this._statBar('Сер. RPE', a.avgRpe || 0, 10, '#f1c40f')}
+            ${this._statBar('Load 28д', a.load28 || 0, Math.max(200, (a.load28 || 0) * 1.2, (b.load28 || 0) * 1.2), '#e67e22')}
+            ${this._statBar('Load зараз', me.load || 0, 10, '#9b59b6')}
+          </div>
+          <div class="compare-col">
+            <div class="compare-name">#${other.number || ''} ${sanitize(other.lastName || '')}</div>
+            ${this._statBar('Готовність %', condB, 100, '#2ecc71')}
+            ${this._statBar('Відвідування %', b.attPct || 0, 100, '#3498db')}
+            ${this._statBar('Сер. RPE', b.avgRpe || 0, 10, '#f1c40f')}
+            ${this._statBar('Load 28д', b.load28 || 0, Math.max(200, (a.load28 || 0) * 1.2, (b.load28 || 0) * 1.2), '#e67e22')}
+            ${this._statBar('Load зараз', other.load || 0, 10, '#9b59b6')}
+          </div>
+        </div>
+        <div class="compare-radar card-inner">
+          <div class="ct" style="margin-bottom:8px">Порівняльна діаграма</div>
+          ${this._compareSvg(me, other, a, b, condA, condB)}
+        </div>`;
+    } else {
+      charts = `<p class="note-sm">Оберіть партнера зі складу, щоб порівняти готовність, відвідування, RPE та навантаження.</p>`;
+    }
+
+    return `
+      <div class="card glass compare-card">
+        <div class="ct">Порівняння зі складом</div>
+        <div class="fgr" style="margin:8px 0">
+          <label>Порівняти з</label>
+          <select id="playerCompareSel" data-action="player-compare">
+            <option value="">— оберіть гравця —</option>
+            ${opts}
+          </select>
+        </div>
+        ${charts}
+      </div>`;
+  },
+
+  _compareSvg(me, other, a, b, condA, condB) {
+    // простий SVG bar chart 5 метрик
+    const metrics = [
+      { label: 'Готовн.', va: condA, vb: condB, max: 100 },
+      { label: 'Відвід.%', va: a.attPct || 0, vb: b.attPct || 0, max: 100 },
+      { label: 'RPE', va: a.avgRpe || 0, vb: b.avgRpe || 0, max: 10 },
+      { label: 'Load28', va: a.load28 || 0, vb: b.load28 || 0, max: Math.max(1, a.load28 || 0, b.load28 || 0, 50) },
+      { label: 'Load', va: me.load || 0, vb: other.load || 0, max: 10 }
+    ];
+    const W = 320, H = 140, pad = 28, gap = 12;
+    const barW = (W - pad * 2 - gap * (metrics.length - 1)) / metrics.length;
+    let bars = '';
+    metrics.forEach((m, i) => {
+      const x = pad + i * (barW + gap);
+      const ha = Math.round((m.va / m.max) * (H - 40));
+      const hb = Math.round((m.vb / m.max) * (H - 40));
+      const bw = barW / 2 - 2;
+      bars += `<rect x="${x}" y="${H - 20 - ha}" width="${bw}" height="${ha}" rx="3" fill="#3498db"/>`;
+      bars += `<rect x="${x + bw + 2}" y="${H - 20 - hb}" width="${bw}" height="${hb}" rx="3" fill="#e74c3c"/>`;
+      bars += `<text x="${x + barW / 2}" y="${H - 4}" text-anchor="middle" fill="#9aa4b2" font-size="9">${m.label}</text>`;
+    });
+    return `<svg class="compare-svg" viewBox="0 0 ${W} ${H}" width="100%" height="140" aria-label="Порівняння">
+      <text x="8" y="14" fill="#3498db" font-size="10">■ Ви</text>
+      <text x="50" y="14" fill="#e74c3c" font-size="10">■ Партнер</text>
+      ${bars}
+    </svg>`;
+  },
+
 
   _noPlayerLink() {
     return '<div class="card"><div class="ct">Профіль не прив\u2019язано</div>'
@@ -126,6 +253,8 @@ const Views = {
         <button type="button" class="btn btn-s btn-sm" data-io="import" data-action="import-trigger" title="Оновити дані від тренера">Імпорт JSON</button>
       </div>
       ${me ? this._fifaCard(me, stats) : this._noPlayerLink()}
+      ${me ? this._myStatsCharts(me, stats) : ''}
+      ${me ? this._compareBlock(me, (typeof window !== 'undefined' && window.__playerCompareId) || '') : ''}
       <div class="dg player-team-stats">
         <div class="sc"><div class="lb">Наступне тренування</div><div class="vl" style="font-size:13px">${next ? sanitize(next.name) : '—'}</div><div class="sb">${next ? next.date + ' ' + (next.time || '') : ''}</div></div>
         <div class="sc"><div class="lb">Наступний матч</div><div class="vl" style="font-size:13px">${nextMatch ? 'vs ' + sanitize(nextMatch.opponent) : '—'}</div><div class="sb">${nextMatch ? nextMatch.date : ''}</div></div>

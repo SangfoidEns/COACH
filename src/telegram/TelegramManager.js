@@ -62,6 +62,19 @@ const TelegramManager = {
     }
   },
 
+
+  getUser() {
+    try {
+      if (this.tg && this.tg.initDataUnsafe && this.tg.initDataUnsafe.user) {
+        return this.tg.initDataUnsafe.user;
+      }
+    } catch (_) {}
+    return null;
+  },
+  getUserPhotoUrl() {
+    const u = this.getUser();
+    return (u && u.photo_url) ? u.photo_url : '';
+  },
   applyTheme() {
     if (!this.tg) return;
     const p = this.tg.themeParams || {};

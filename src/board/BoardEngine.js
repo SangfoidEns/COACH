@@ -1876,25 +1876,27 @@ const BoardEngine = {
         + (isReserve ? ' · резерв' : '');
       const extraCls = (isInjured ? ' injured' : '') + (isRehab ? ' rehab' : '') + (isReserve ? ' reserve' : '') + (isCaptain ? ' captain' : '');
       const readyAttr = readiness != null ? ` data-ready="${Math.round(readiness)}"` : '';
-      // Стиль як на лавці: щільне SVG-кільце + круглий аватар
+      // Ідентично лавці: wrap 40px + ring SVG + avatar 28px
       const loadPct = loadNum != null && !isNaN(loadNum)
         ? Math.max(0, Math.min(1, loadNum / 10))
         : Math.max(0, Math.min(1, readiness / 100));
       const loadCol = loadNum != null && !isNaN(loadNum)
         ? (loadPct >= 0.7 ? '#e74c3c' : loadPct >= 0.4 ? '#f1c40f' : '#3498db')
         : ringColor;
-      const ringSz = Math.round(m.player * 1.38);
       const circ = 2 * Math.PI * 15;
-      const loadArc =
-        `<svg class="pt-load-ring" viewBox="0 0 40 40" aria-hidden="true" style="width:${ringSz}px;height:${ringSz}px">` +
+      const ringSvg =
+        `<svg class="pt-load-ring" viewBox="0 0 40 40" aria-hidden="true">` +
         `<circle cx="20" cy="20" r="15" fill="none" stroke="rgba(0,0,0,0.35)" stroke-width="3.5"/>` +
         `<circle cx="20" cy="20" r="15" fill="none" stroke="${loadCol}" stroke-width="3.5" stroke-dasharray="${loadPct * circ} ${circ}" stroke-linecap="round" transform="rotate(-90 20 20)"/></svg>`;
-      const customBg = o.chipColor || o.fill || (o.team === 'own' || o.team === 'opp' ? o.color : null);
+      let customBg = o.chipColor || o.fill || o.color || null;
+      if (isGk) customBg = this.GK_CHIP_COLOR;
       const bgStyle = customBg ? `background:${customBg} !important;` : '';
-      const body = Math.round(m.player);
-      html += `<div class="${cls}${extraCls}" data-id="${o.id}" data-r="${rPx}"${readyAttr} ` +
-        `style="left:${pct.left}%;top:${pct.top}%;width:${body}px;height:${body}px;font-size:${m.font}px;--pt-r:${rPx}px;${bgStyle}" ` +
-        `title="${sanitize(titleName + titleExtra)}">${loadArc}${statusBadge}<span class="pt-num">${o.number || ''}</span>${label}</div>`;
+      // Контейнер 40×40 як bench-avatar-wrap; позиція — центр у % поля
+      html += `<div class="${cls}${extraCls} pt-bench-style" data-id="${o.id}" data-r="14"${readyAttr} ` +
+        `style="left:${pct.left}%;top:${pct.top}%;${bgStyle ? '' : ''}" ` +
+        `title="${sanitize(titleName + titleExtra)}">` +
+        `<div class="pt-wrap">${ringSvg}<div class="pt-avatar" style="${bgStyle}"><span class="pt-num">${o.number || ''}</span></div></div>` +
+        `${statusBadge}${label}</div>`;
     });
     layer.innerHTML = html;
     // Re-bind dblclick / contextmenu without inline handlers

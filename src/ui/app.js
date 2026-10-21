@@ -472,6 +472,16 @@ const App = {
   allowBoardOnce(reason) {
     this._boardNavToken = reason || 'explicit';
   },
+
+  _bindPlayerCompare() {
+    const sel = document.getElementById('playerCompareSel');
+    if (!sel || sel._bound) return;
+    sel._bound = true;
+    sel.addEventListener('change', () => {
+      try { window.__playerCompareId = sel.value || ''; } catch (_) {}
+      try { this.renderCurrent(); } catch (_) {}
+    });
+  },
   navigate(view) {
     // iOS: після file picker focus може «клікнути» логотип — блокуємо
     try {
@@ -536,6 +546,7 @@ const App = {
       try { TelegramManager.hideBackButton(); } catch (_) {}
     }
     this.renderCurrent();
+    try { this._bindPlayerCompare(); } catch (_) {}
     // field needs resize after layout change
     if (view === 'board') {
       requestAnimationFrame(() => {
@@ -614,6 +625,7 @@ const App = {
         (typeof sanitize === 'function' ? sanitize(e.message || String(e)) : String(e)) +
         '</p><button type="button" class="btn btn-s" data-action="import-trigger">Імпорт JSON</button></div>';
     }
+    try { this._bindPlayerCompare(); } catch (_) {}
   },
 
   updateClock() {
@@ -884,7 +896,7 @@ const App = {
       if (action === 'anim-pause') return BoardEngine.animPause();
       if (action === 'anim-stop') return BoardEngine.animStop();
       if (action === 'anim-restart') return BoardEngine.animRestart();
-      if (action === 'cal-prev') { const d = new Date(Store.get().ui.calDate); d.setMonth(d.getMonth() - 1); Store.get().ui.calDate = d.toISOString().slice(0, 10); App.renderCurrent(); return; }
+      if (action === 'cal-prev') { const d = new Date(Store.get().ui.calDate); d.setMonth(d.getMonth() - 1); Store.get().ui.calDate = d.toISOString().slice(0, 10); App.renderCurrent(); try { App._bindPlayerCompare(); } catch (_) {} return; }
       if (action === 'cal-next') { const d = new Date(Store.get().ui.calDate); d.setMonth(d.getMonth() + 1); Store.get().ui.calDate = d.toISOString().slice(0, 10); App.renderCurrent(); return; }
       if (action === 'microcycle') return Actions.applyMicrocycle();
       if (action === 'export-stats') return StorageManager.exportJSON();
