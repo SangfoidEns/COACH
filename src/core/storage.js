@@ -283,11 +283,27 @@ const StorageManager = {
   },
 
   normalizePlayer(p) {
+    if (!p) return null;
+    let status = p.status || p.healthStatus || 'available';
+    if (status === 'healthy') status = 'available';
+    if (status === 'recovery') status = 'rehab';
     return {
-      id: p.id || uid(), firstName: p.firstName || '', lastName: p.lastName || '',
-      number: p.number || 0, position: p.position || 'CM', secondaryPositions: p.secondaryPositions || [],
-      age: p.age || 20, status: p.status || 'available', condition: p.condition ?? 90,
-      readiness: p.readiness ?? 90, load: p.load ?? 0, notes: p.notes || '', group: p.group || 'main', tags: p.tags || []
+      id: p.id || uid(),
+      firstName: p.firstName || '',
+      lastName: p.lastName || '',
+      number: p.number || 0,
+      position: p.position || 'CM',
+      secondaryPositions: p.secondaryPositions || [],
+      age: p.age || 20,
+      status,
+      healthStatus: p.healthStatus || status,
+      isCaptain: !!p.isCaptain,
+      condition: p.condition ?? 90,
+      readiness: p.readiness ?? 90,
+      load: p.load ?? 0,
+      notes: p.notes || '',
+      group: p.group || 'main',
+      tags: p.tags || []
     };
   },
 
@@ -295,6 +311,9 @@ const StorageManager = {
     if (!o) return null;
     const x = o.x != null ? (o.x > 1 ? o.x / 100 : o.x) : 0.5;
     const y = o.y != null ? (o.y > 1 ? o.y / 100 : o.y) : 0.5;
+    let status = o.status || o.healthStatus || null;
+    if (status === 'healthy') status = 'available';
+    if (status === 'recovery') status = 'rehab';
     return {
       id: o.id || uid(),
       type: o.type || 'player',
@@ -304,10 +323,23 @@ const StorageManager = {
       w: o.w != null ? (o.w > 1 ? o.w / 100 : o.w) : undefined,
       h: o.h != null ? (o.h > 1 ? o.h / 100 : o.h) : undefined,
       r: o.r != null ? (o.r > 1 ? o.r / 100 : o.r) : undefined,
-      number: o.number, label: o.label || o.name || o.text || '',
-      team: o.team || (o.type === 'opp' ? 'opp' : 'own'),
+      number: o.number,
+      label: o.label || o.name || o.text || '',
+      team: o.team || (o.type === 'opp' || o.type === 'opponent' ? 'opp' : 'own'),
       playerId: o.playerId || null,
-      color: o.color
+      color: o.color,
+      chipColor: o.chipColor || o.color || undefined,
+      fill: o.fill,
+      status,
+      isCaptain: !!o.isCaptain,
+      readiness: o.readiness != null ? o.readiness : undefined,
+      load: o.load != null ? o.load : undefined,
+      position: o.position || undefined,
+      onBench: !!o.onBench,
+      step: o.step,
+      locked: !!o.locked,
+      visible: o.visible !== false,
+      rotation: o.rotation || 0
     };
   },
 

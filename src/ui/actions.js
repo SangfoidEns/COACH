@@ -225,8 +225,8 @@ const Actions = {
         }).join('')}
       </div>`, [
       { label: 'Скасувати', cls: 'btn-s', action: 'cancel' },
-      { label: 'На дошку', cls: 'btn-s', action: 'cancel' },
-      { label: 'Зберегти', cls: 'btn-p', action: 'save-training', /* tid via dataset */ }
+      { label: 'На дошку', cls: 'btn-s', action: 'open-training-board' },
+      { label: 'Зберегти', cls: 'btn-p', action: 'save-training' }
     ]);
     // attach tid
     const saveBtn = document.querySelector('[data-modal-action="save-training"]');
@@ -234,6 +234,7 @@ const Actions = {
 
     // block actions via delegation on modal
     document.getElementById('modalBody').onclick = e => {
+      e.stopPropagation();
       const ab = e.target.closest('[data-add-block]');
       if (ab) {
         const [tid, name, dur] = ab.dataset.addBlock.split(':');
@@ -324,13 +325,16 @@ const Actions = {
         <div class="fgr"><label>Позиція</label><select id="plP">${['GK','CB','LB','RB','DM','CM','AM','LW','RW','ST'].map(p=>`<option>${p}</option>`).join('')}</select></div>
         <div class="fgr"><label>Вік</label><input type="number" id="plA" value="24"></div>
         <div class="fgr"><label>Статус</label><select id="plS">
-          <option value="available">Available</option><option value="injured">Injured</option>
-          <option value="recovery">Recovery</option><option value="suspended">Suspended</option>
-          <option value="individual">Individual</option><option value="unavailable">Unavailable</option>
+          <option value="available">Здоровий</option>
+          <option value="injured">Травмований</option>
+          <option value="rehab">Відновлення</option>
+          <option value="suspended">Дискваліфікація</option>
+          <option value="unavailable">Недоступний</option>
         </select></div>
         <div class="fgr"><label>Стан %</label><input type="number" id="plC" value="90" min="0" max="100"></div>
         <div class="fgr"><label>Готовність %</label><input type="number" id="plR" value="95" min="0" max="100"></div>
         <div class="fgr"><label>Група</label><select id="plG"><option value="main">Основний</option><option value="reserve">Резерв</option><option value="gk">Воротарі</option></select></div>
+        <div class="fgr full"><label class="chk-label"><input type="checkbox" id="plCap"> Капітан команди</label></div>
         <div class="fgr full"><label>Примітки</label><textarea id="plNo"></textarea></div>
       </div>`, [
       { label: 'Скасувати', cls: 'btn-s', action: 'cancel' },
@@ -342,12 +346,18 @@ const Actions = {
     const firstName = document.getElementById('plF')?.value?.trim();
     const lastName = document.getElementById('plL')?.value?.trim();
     if (!firstName && !lastName) { Toast.show('Вкажіть ім\'я', 'warn'); return; }
+    const st = document.getElementById('plS')?.value || 'available';
+    const status = st === 'healthy' ? 'available' : (st === 'recovery' ? 'rehab' : st);
+    const isCaptain = !!document.getElementById('plCap')?.checked;
+    if (isCaptain) Store.get().players.forEach(x => { x.isCaptain = false; });
     Store.get().players.push({
       id: uid(), firstName, lastName,
       number: +document.getElementById('plN')?.value || 99,
       position: document.getElementById('plP')?.value || 'CM',
       secondaryPositions: [], age: +document.getElementById('plA')?.value || 20,
-      status: document.getElementById('plS')?.value || 'available',
+      status,
+      healthStatus: status,
+      isCaptain,
       condition: +document.getElementById('plC')?.value || 90,
       readiness: +document.getElementById('plR')?.value || 90,
       load: 0, notes: document.getElementById('plNo')?.value || '',
@@ -362,6 +372,10 @@ const Actions = {
   editPlayer(id) {
     const p = Store.get().players.find(x => x.id === id);
     if (!p) return;
+    const st = p.status || 'available';
+    const stHealthy = (st === 'available' || st === 'healthy');
+    const stInj = (st === 'injured');
+    const stRehab = (st === 'rehab' || st === 'recovery');
     Modal.open('Редагування гравця', `
       <div class="fg">
         <div class="fgr"><label>Ім\'я</label><input id="peF" value="${sanitize(p.firstName)}"></div>
@@ -369,9 +383,17 @@ const Actions = {
         <div class="fgr"><label>Номер</label><input type="number" id="peN" value="${p.number}"></div>
         <div class="fgr"><label>Позиція</label><select id="peP">${['GK','CB','LB','RB','DM','CM','AM','LW','RW','ST'].map(pos=>`<option ${p.position===pos?'selected':''}>${pos}</option>`).join('')}</select></div>
         <div class="fgr"><label>Вік</label><input type="number" id="peA" value="${p.age}"></div>
-        <div class="fgr"><label>Статус</label><select id="peS">
-          ${['available','injured','recovery','suspended','individual','unavailable'].map(s=>`<option value="${s}" ${p.status===s?'selected':''}>${s}</option>`).join('')}
+        <div class="fgr"><label>Статус здоров\'я</label><select id="peS">
+          <option value="available" ${stHealthy?'selected':''}>Здоровий</option>
+          <option value="injured" ${stInj?'selected':''}>Травмований</option>
+          <option value="rehab" ${stRehab?'selected':''}>Відновлення</option>
+          <option value="suspended" ${st==='suspended'?'selected':''}>Дискваліфікація</option>
+          <option value="unavailable" ${st==='unavailable'?'selected':''}>Недоступний</option>
         </select></div>
+        <div class="fgr full"><label class="chk-label" style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="peCap" ${p.isCaptain?'checked':''} style="width:18px;height:18px">
+          <span><strong>Капітан команди (C)</strong></span>
+        </label></div>
         <div class="fgr"><label>Стан %</label><input type="number" id="peC" value="${p.condition}"></div>
         <div class="fgr"><label>Готовність %</label><input type="number" id="peR" value="${p.readiness}"></div>
         <div class="fgr"><label>Load (0-10)</label><input type="number" id="peLoad" value="${p.load||0}" min="0" max="10"></div>
@@ -398,15 +420,39 @@ const Actions = {
     p.position = document.getElementById('peP')?.value || p.position;
     p.age = +document.getElementById('peA')?.value || p.age;
     p.status = document.getElementById('peS')?.value || p.status;
+    if (p.status === 'healthy') p.status = 'available';
+    if (p.status === 'recovery') p.status = 'rehab';
     p.condition = +document.getElementById('peC')?.value ?? p.condition;
     p.readiness = +document.getElementById('peR')?.value ?? p.readiness;
     p.load = +document.getElementById('peLoad')?.value ?? p.load;
     p.group = document.getElementById('peG')?.value || p.group;
     p.notes = document.getElementById('peNo')?.value || '';
-    StorageManager.save();
+    const wantCap = !!document.getElementById('peCap')?.checked;
+    if (wantCap) {
+      Store.get().players.forEach(x => { x.isCaptain = (x.id === p.id); });
+    } else {
+      p.isCaptain = false;
+    }
+    p.healthStatus = p.status;
+    try {
+      (Store.get().activeBoard.objects || []).forEach(o => {
+        if (o.playerId === p.id) {
+          o.status = p.status;
+          o.isCaptain = !!p.isCaptain;
+          o.position = p.position;
+          o.readiness = p.readiness;
+          o.load = p.load;
+          o.label = p.lastName || o.label;
+          o.number = p.number;
+        }
+        if (wantCap && o.playerId && o.playerId !== p.id) o.isCaptain = false;
+      });
+    } catch (_) {}
+    try { StorageManager.save(); } catch (_) {}
     Modal.close();
-    Toast.show('Збережено', 'ok');
+    Toast.show(wantCap ? 'Збережено · Капітан' : (p.status === 'injured' ? 'Збережено · Травма' : 'Збережено'), 'ok');
     App.renderCurrent();
+    try { if (typeof BoardEngine !== 'undefined') BoardEngine.render(); } catch (_) {}
   },
 
   newExercise() {
@@ -468,7 +514,7 @@ const Actions = {
         <strong>Coaching Points:</strong> ${sanitize(e.coachingPoints || '—')}
       </p>
       <div class="fa">
-        <button class="btn btn-p btn-sm" data-action="close-modal" onclick="BoardEngine.applyScheme('4-3-3');Modal.close();App.navigate('board')">OPEN ON BOARD</button>
+        <button class="btn btn-p btn-sm" data-action="close-modal" onclick="BoardEngine.applyScheme('4-3-3');Modal.close();Toast.show('Схему застосовано. Відкрийте дошку через логотип.','ok')">OPEN ON BOARD</button>
         <button class="btn btn-d btn-sm" data-del-ex="${e.id}">Видалити</button>
       </div>`, [{ label: 'Закрити', cls: 'btn-s', action: 'cancel' }]);
     document.getElementById('modalBody').querySelector('[data-del-ex]')?.addEventListener('click', () => {
@@ -538,7 +584,7 @@ const Actions = {
       { label: 'На дошку', cls: 'btn-p', action: 'cancel' }
     ]);
     const btn = document.querySelector('#modalFooter .btn-p');
-    if (btn) btn.onclick = () => { if (m.scheme) BoardEngine.applyScheme(m.scheme); Modal.close(); App.navigate('board'); };
+    if (btn) btn.onclick = () => { if (m.scheme) BoardEngine.applyScheme(m.scheme); Modal.close(); Toast.show('Схему застосовано. Відкрийте дошку через логотип.','ok'); };
   },
 
   newEvent() {

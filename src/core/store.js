@@ -47,3 +47,14 @@ const Store = (() => {
   };
 })();
 
+
+/** Єдиний капітан команди */
+Store.setCaptain = function (playerId) {
+  const players = Store.get().players || [];
+  players.forEach(p => { p.isCaptain = (p.id === playerId); });
+  try {
+    (Store.get().activeBoard.objects || []).forEach(o => {
+      o.isCaptain = !!(o.playerId && o.playerId === playerId);
+    });
+  } catch (_) {}
+};

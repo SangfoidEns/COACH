@@ -3,7 +3,7 @@ const Views = {
   dashboard() {
     const s = Store.get();
     const avail = s.players.filter(p => p.status === 'available').length;
-    const injured = s.players.filter(p => p.status === 'injured' || p.status === 'recovery').length;
+    const injured = s.players.filter(p => p.status === 'injured' || p.status === 'recovery' || p.status === 'rehab').length;
     const next = s.trainings.filter(t => t.status === 'planned' && t.date >= today()).sort((a, b) => a.date.localeCompare(b.date))[0];
     const weekLoad = LoadModel.weeklyLoad(s.trainings);
     const totalHours = Math.round(s.trainings.reduce((a, t) => a + (t.duration || 0), 0) / 60 * 10) / 10;
@@ -79,16 +79,16 @@ const Views = {
     if (!list.length) return '<div class="es"><div class="ic">📋</div>Немає тренувань</div>';
     return list.map(t => {
       const total = (t.structure || []).reduce((a, b) => a + (b.duration || 0), 0);
-      return `<div class="card">
+      return `<div class="card card-training" data-edit-training="${t.id}" role="button" tabindex="0">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
           <div><strong>${sanitize(t.name)}</strong>
             <div class="me" style="font-size:11px;color:var(--muted);margin-top:3px">${t.date} ${t.time || ''} · ${t.duration}хв · <span class="badge b-i">${t.status}</span> · Load: ${LoadModel.sessionLoad(t.duration, t.intensity)}</div>
             ${t.structure ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">${t.structure.map(b => sanitize(b.title || b.name) + '(' + b.duration + 'хв)').join(' → ')} = ${total}хв</div>` : ''}
           </div>
-          <div style="display:flex;gap:3px">
-            <button class="btn btn-s btn-sm" data-edit-training="${t.id}">Редагувати</button>
-            <button class="btn btn-s btn-sm" data-dup-training="${t.id}">Дубль</button>
-            <button class="btn btn-d btn-sm" data-del-training="${t.id}">✕</button>
+          <div style="display:flex;gap:3px" data-edit-training="${t.id}">
+            <button type="button" class="btn btn-s btn-sm" data-edit-training="${t.id}">Деталі</button>
+            <button type="button" class="btn btn-s btn-sm" data-dup-training="${t.id}">Дубль</button>
+            <button type="button" class="btn btn-d btn-sm" data-del-training="${t.id}">✕</button>
           </div>
         </div>
       </div>`;
@@ -103,9 +103,11 @@ const Views = {
         <input type="search" id="plSearch" placeholder="Пошук..." data-filter="players">
         <select id="plPos" data-filter="players"><option value="">Всі позиції</option>${['GK','CB','LB','RB','DM','CM','AM','LW','RW','ST'].map(p=>`<option>${p}</option>`).join('')}</select>
         <select id="plSt" data-filter="players"><option value="">Всі статуси</option>
-          <option value="available">Available</option><option value="injured">Injured</option>
-          <option value="recovery">Recovery</option><option value="suspended">Suspended</option>
-          <option value="individual">Individual</option><option value="unavailable">Unavailable</option>
+          <option value="available">Здоровий</option>
+          <option value="injured">Травмований</option>
+          <option value="rehab">Відновлення</option>
+          <option value="suspended">Дискваліфікація</option>
+          <option value="unavailable">Недоступний</option>
         </select>
         <select id="plGr" data-filter="players"><option value="">Всі групи</option>
           <option value="main">Основний</option><option value="reserve">Резерв</option>
@@ -121,14 +123,22 @@ const Views = {
 
   _plRows(list) {
     if (!list.length) return '<tr><td colspan="9" style="text-align:center;color:var(--muted)">Немає гравців</td></tr>';
+    const statusLabel = (st) => ({
+      available: 'Здоровий', healthy: 'Здоровий', injured: 'Травмований',
+      rehab: 'Відновлення', recovery: 'Відновлення', suspended: 'Дискваліфікація',
+      unavailable: 'Недоступний', individual: 'Індивідуально'
+    })[st] || st;
     return list.map(p => {
-      const bc = p.status === 'available' ? 'b-ok' : (p.status === 'injured' ? 'b-d' : 'b-w');
+      const st = p.status || 'available';
+      const bc = (st === 'available' || st === 'healthy') ? 'b-ok' : (st === 'injured' ? 'b-d' : 'b-w');
       const lc = (p.load || 0) < 4 ? 'll' : (p.load || 0) < 7 ? 'lm' : 'lh';
+      const cap = p.isCaptain ? ' <span class="player-cap-tag">C</span>' : '';
+      const inj = (st === 'injured') ? ' <span class="player-inj-ico" title="Травма">✚</span>' : '';
       return `<tr>
         <td><span class="pn ${p.position === 'GK' ? 'gk' : ''}">${p.number}</span></td>
-        <td>${sanitize(p.firstName)} ${sanitize(p.lastName)}</td>
+        <td>${sanitize(p.firstName)} ${sanitize(p.lastName)}${cap}${inj}</td>
         <td>${p.position}</td><td>${p.age}</td>
-        <td><span class="badge ${bc}">${p.status}</span></td>
+        <td><span class="badge ${bc}">${statusLabel(st)}</span></td>
         <td>${p.condition}%</td><td>${p.readiness}%</td>
         <td><div class="lb2"><div class="lbf ${lc}" style="width:${(p.load || 0) * 10}%"></div></div></td>
         <td>
@@ -233,7 +243,10 @@ const Views = {
       <div class="ch"><strong>${title}</strong></div>
       ${grid}
       <div class="card" style="margin-top:12px"><div class="ct">Події ${ds}</div>
-        ${events.length ? events.map(e => `<div class="li"><div class="inf"><div class="ti">${sanitize(e.title || e.name)}</div><div class="me">${e.type || e.eventType} · ${e.time || ''}</div></div></div>`).join('') : '<div style="color:var(--muted);font-size:12px">Немає подій</div>'}
+        ${events.length ? events.map(e => {
+        const openAttr = e.type === 'TRAINING' && e.id ? ` data-edit-training="${e.id}"` : (e.type === 'MATCH' && e.id ? ` data-view-match="${e.id}"` : '');
+        return `<div class="li"${openAttr} style="cursor:pointer"><div class="inf"><div class="ti">${sanitize(e.title || e.name)}</div><div class="me">${e.type || e.eventType} · ${e.time || ''}</div></div></div>`;
+      }).join('') : '<div style="color:var(--muted);font-size:12px">Немає подій</div>'}
       </div>
       <div class="card"><div class="ct">Мікроцикл / Шаблони</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">

@@ -69,8 +69,12 @@
   <div class="view on" id="v-dashboard"></div>
   <div class="view" id="v-trainings"></div>
   <div class="view view-board" id="v-board">
-    <div class="btb" id="boardToolbar"></div>
+    <div class="btb btb-top" id="boardToolbarTop" aria-label="Верхня панель дошки"></div>
     <div class="ba" id="boardArea">
+      <aside class="bench-panel" id="benchPanel" aria-label="Лавка запасних">
+        <div class="bench-head">ЗАПАС</div>
+        <div class="bench-list" id="benchList"></div>
+      </aside>
       <div class="fc" id="fieldContainer">
         <div class="field-stage" id="fieldStage">
           <svg class="fs" id="fieldSvg" viewBox="0 0 680 1050" preserveAspectRatio="xMidYMid meet"></svg>
@@ -79,6 +83,7 @@
         </div>
       </div>
     </div>
+    <div class="btb btb-bottom" id="boardToolbarBottom" aria-label="Нижня панель інструментів"></div>
   </div>
   <div class="view" id="v-exercises"></div>
   <div class="view" id="v-players"></div>

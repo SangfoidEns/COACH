@@ -7,6 +7,11 @@ const BoardEngine = {
   dragObj: null,
   dragOffset: { x: 0, y: 0 },
   activePointerId: null,
+  /** Drag з лавки на поле */
+  benchDragId: null,
+  benchGhost: null,
+  /** Тап по запасним → наступний тап по полю ставить його */
+  pendingFromBenchId: null,
   pointers: new Map(), // multi-touch for pinch
   lastPinchDist: 0,
   panStart: null,
@@ -47,6 +52,7 @@ const BoardEngine = {
     c.addEventListener('pointercancel', e => this.onPointerUp(e));
     c.addEventListener('wheel', e => this.onWheel(e), { passive: false });
     c.addEventListener('contextmenu', e => e.preventDefault());
+    this._bindBenchPanelOnce();
     // Resize
     if (window.ResizeObserver) {
       new ResizeObserver(() => { this.applyCamera(); this.renderTokens(); this.renderDrawings(); }).observe(c);
@@ -67,7 +73,8 @@ const BoardEngine = {
     // Fullscreen change
     document.addEventListener('fullscreenchange', () => {
       if (!document.fullscreenElement && this.isBoardOnly) {
-        // keep CSS board-only even if browser FS exits; user must press EXIT
+        // ESC у браузері — знімаємо лише native FS, CSS board-only лишається до ⛶
+        try { this.renderToolbar && this.renderToolbar(); } catch (_) {}
       }
     });
   },
@@ -98,6 +105,7 @@ const BoardEngine = {
     const s = Store.get();
     let best = null, bestD = maxDist;
     (s.activeBoard.objects || []).forEach(o => {
+      if (o.onBench) return;
       if (!['player', 'opponent', 'ball'].includes(o.type)) return;
       const d = Math.hypot((o.x || 0) - wx, (o.y || 0) - wy);
       if (d < bestD) { bestD = d; best = o; }
@@ -215,42 +223,73 @@ const BoardEngine = {
   },
 
   /* ── FULLSCREEN / BOARD-ONLY MODE ── */
+  /** Повний екран: CSS board-only + documentElement FS (не #v-board — інакше UI «вмирає») */
   enterFullscreen() {
     this.isBoardOnly = true;
-    document.body.classList.add('board-fs-nav');
-    document.body.classList.add('board-only-mode');
-    App.navigate('board');
-    // Telegram Mini App fullscreen (if available)
-    if (typeof TelegramManager !== 'undefined' && TelegramManager.isTelegram) {
-      TelegramManager.requestFullscreen();
-      TelegramManager.lockLandscape();
-    }
-    // Browser Fullscreen API (best effort)
-    const el = document.documentElement;
-    const req = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
-    if (req) {
-      try { req.call(el); } catch (_) {}
-    }
-    // Ensure board is visible and sized
-    setTimeout(() => this.render(), 100);
-    Toast.show('Лише дошка — ESC або ВИХІД', 'ok');
+    document.body.classList.add('board-fs-nav', 'board-only-mode', 'mode-board-focus', 'board-workspace');
+    try {
+      if (typeof TelegramManager !== 'undefined' && TelegramManager.isTelegram) {
+        TelegramManager.requestFullscreen();
+        TelegramManager.lockLandscape();
+      }
+    } catch (_) {}
+    // Тільки documentElement — щоб toolbar/кнопки лишались у тому ж FS-дереві
+    try {
+      const el = document.documentElement;
+      const req = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+      if (req && !document.fullscreenElement) req.call(el);
+    } catch (_) {}
+    setTimeout(() => {
+      try {
+        this.renderToolbar && this.renderToolbar();
+        this.fitField && this.fitField();
+        this.render && this.render();
+      } catch (_) {}
+    }, 100);
+    try { Toast.show('Повний екран · ⛶ або ✕ для виходу', 'ok'); } catch (_) {}
   },
 
   exitFullscreen() {
     this.isBoardOnly = false;
-    document.body.classList.remove('board-fs-nav');
-    document.body.classList.remove('board-only-mode');
-    if (typeof TelegramManager !== 'undefined') { TelegramManager.exitFullscreen(); TelegramManager.unlockOrientation(); }
+    // Повне зняття FS-класів — інакше main лишається fixed і UI «мертвий»
+    document.body.classList.remove('board-fs-nav', 'board-only-mode');
+    // mode-board-focus лишаємо, якщо користувач досі на view board
+    try {
+      const view = (typeof Store !== 'undefined' && Store.get().ui.view) || '';
+      if (view !== 'board') {
+        document.body.classList.remove('mode-board-focus', 'board-workspace', 'present-mode');
+      }
+    } catch (_) {
+      document.body.classList.remove('mode-board-focus', 'board-workspace', 'present-mode');
+    }
+    try {
+      if (typeof TelegramManager !== 'undefined') {
+        TelegramManager.exitFullscreen();
+        TelegramManager.unlockOrientation();
+      }
+    } catch (_) {}
     if (document.fullscreenElement) {
       const ex = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
       if (ex) try { ex.call(document); } catch (_) {}
     }
-    setTimeout(() => this.render(), 100);
+    setTimeout(() => {
+      try { this.renderToolbar && this.renderToolbar(); this.render && this.render(); } catch (_) {}
+    }, 80);
   },
 
   toggleFullscreen() {
     if (this.isBoardOnly) this.exitFullscreen();
     else this.enterFullscreen();
+  },
+
+  /** Вихід з режиму дошки (CSS). Native fullscreen додатку НЕ чіпаємо. */
+  leaveBoardMode() {
+    this.isBoardOnly = false;
+    document.body.classList.remove(
+      'board-fs-nav', 'board-only-mode', 'mode-board-focus',
+      'board-workspace', 'present-mode', 'bw-props', 'bw-tools-collapsed', 'bw-nav-hide'
+    );
+    // document.fullscreenElement і Telegram fullscreen лишаються як були
   },
 
   /* ── POINTER DOWN ── */
@@ -309,15 +348,23 @@ const BoardEngine = {
       }
     }
 
+    // Тап по полю після вибору запасного → вивести на позицію
+    if (this.pendingFromBenchId && !target) {
+      this.promoteFromBench(this.pendingFromBenchId, world.x, world.y);
+      return;
+    }
+
     // Tool actions
     if (tool === 'player' || tool === 'opponent') {
       const pp = this.clampWorld(world.x, world.y);
       if (tool === 'opponent') {
         const num = s.activeBoard.objects.filter(o => o.type === 'opponent').length + 1;
+        const oppCol = s.activeBoard.drawColor || undefined;
         s.activeBoard.objects.push({
           id: uid(), type: 'opponent',
           x: pp.x, y: pp.y, number: num, label: '',
           team: 'opp', playerId: null,
+          chipColor: oppCol, color: oppCol,
           rotation: 0, locked: false, visible: true
         });
         this.pushHistory();
@@ -484,14 +531,24 @@ const BoardEngine = {
 
     // Commit drag
     if (this.dragObj) {
-      const el = document.querySelector(`[data-id="${this.dragObj.id}"]`);
+      const dragged = this.dragObj;
+      const el = document.querySelector(`[data-id="${dragged.id}"]`);
       if (el) {
         el.classList.remove('dragging');
         try { el.releasePointerCapture(e.pointerId); } catch (_) {}
       }
+      // Якщо відпустили над панеллю ЗАПАС → на лавку
+      const panel = document.getElementById('benchPanel');
+      const under = document.elementFromPoint(e.clientX, e.clientY);
+      if (panel && under && (panel === under || panel.contains(under))) {
+        this.dragObj = null;
+        this.activePointerId = null;
+        this.demoteToBench(dragged.id);
+        return;
+      }
       this.dragObj = null;
       this.activePointerId = null;
-      this.pushHistory(); // commit once on release
+      this.pushHistory();
       return;
     }
 
@@ -691,6 +748,7 @@ const BoardEngine = {
     if (!p) return;
     const pos = this.clampWorld(x, y);
     const readiness = p.readiness != null ? p.readiness : (p.condition != null ? p.condition : 80);
+    const chipColor = s.activeBoard.drawColor || null;
     s.activeBoard.objects.push({
       id: uid(), type: 'player',
       x: pos.x, y: pos.y,
@@ -699,12 +757,19 @@ const BoardEngine = {
       team: 'own',
       playerId: p.id,
       readiness,
+      load: p.load != null ? p.load : 0,
+      position: p.position || null,
+      status: p.status || null,
+      isCaptain: !!p.isCaptain,
+      chipColor: chipColor || undefined,
+      color: chipColor || undefined,
+      onBench: false,
       rotation: 0, locked: false, visible: true
     });
     this.pushHistory();
     this.render();
     try { TelegramManager.haptic('medium'); } catch (_) {}
-    Toast.show('#' + p.number + ' ' + p.firstName + ' ' + p.lastName + ' · ' + readiness + '%', 'ok');
+    Toast.show('#' + p.number + ' ' + p.firstName + ' · ' + readiness + '%' + (chipColor ? ' · колір' : ''), 'ok');
   },
 
   applyScheme(name, forceTeam) {
@@ -732,26 +797,56 @@ const BoardEngine = {
       Toast.show('Суперник: схема ' + name + ' (дзеркало)', 'ok');
       return;
     }
-    // Своя команда — замінити своїх гравців
-    s.activeBoard.objects = s.activeBoard.objects.filter(o => o.type !== 'player');
-    scheme.forEach(([num, x, y]) => {
+    // Своя команда: рівно 11 на полі за схемою, УСІ інші — у панель ЗАПАС
+    s.activeBoard.objects = s.activeBoard.objects.filter(o => !(o.type === 'player' && o.team !== 'opp'));
+    const chipColor = s.activeBoard.drawColor || null;
+    const usedIds = new Set();
+    // 1) Основа — позиції схеми (макс 11)
+    scheme.slice(0, 11).forEach(([num, x, y]) => {
       const p = this.clampWorld(x, y);
-      // спроба прив'язати гравця зі складу за номером
-      const roster = (s.players || []).find(pl => pl.number === num);
+      let roster = (s.players || []).find(pl => pl.number === num && pl.group !== 'reserve');
+      if (!roster) roster = (s.players || []).find(pl => pl.number === num);
+      if (roster) usedIds.add(roster.id);
       s.activeBoard.objects.push({
         id: uid(), type: 'player', x: p.x, y: p.y, number: num,
         label: roster ? (roster.lastName || '') : '',
         team: 'own',
         playerId: roster ? roster.id : null,
-        readiness: roster ? (roster.readiness != null ? roster.readiness : roster.condition) : null,
+        readiness: roster ? (roster.readiness != null ? roster.readiness : roster.condition) : 80,
+        load: roster && roster.load != null ? roster.load : 0,
         position: roster ? roster.position : null,
         status: roster ? roster.status : null,
+        isCaptain: roster ? !!roster.isCaptain : false,
+        chipColor: chipColor || undefined,
+        color: chipColor || undefined,
+        onBench: false,
+        rotation: 0, locked: false, visible: true
+      });
+    });
+    // 2) Усі інші зі складу → лавка (окрема панель, не на полі)
+    const benchList = (s.players || []).filter(pl => !usedIds.has(pl.id));
+    benchList.forEach((roster) => {
+      s.activeBoard.objects.push({
+        id: uid(), type: 'player',
+        x: 0, y: 0,
+        number: roster.number,
+        label: roster.lastName || '',
+        team: 'own',
+        playerId: roster.id,
+        readiness: roster.readiness != null ? roster.readiness : (roster.condition != null ? roster.condition : 80),
+        load: roster.load != null ? roster.load : 0,
+        position: roster.position || null,
+        status: roster.status || null,
+        isCaptain: !!roster.isCaptain,
+        chipColor: chipColor || undefined,
+        color: chipColor || undefined,
+        onBench: true,
         rotation: 0, locked: false, visible: true
       });
     });
     this.pushHistory();
     this.render();
-    Toast.show('Схема ' + name, 'ok');
+    Toast.show('Основа 11 · Запас ' + benchList.length + (chipColor ? ' · колір' : ''), 'ok');
   },
 
   saveBoard() {
@@ -776,8 +871,8 @@ const BoardEngine = {
     s.activeBoard.objects = JSON.parse(JSON.stringify(b.objects));
     if (b.camera) this.camera = Object.assign({}, b.camera);
     this.pushHistory();
-    App.navigate('board');
     this.render();
+    try { Toast.show('Сцену завантажено в activeBoard. Відкрийте дошку через логотип.', 'ok'); } catch (_) {}
     Toast.show('Завантажено: ' + b.name, 'ok');
   },
 
@@ -1125,6 +1220,7 @@ const BoardEngine = {
 
   drawField(view) {
     const svg = document.getElementById('fieldSvg');
+    if (svg) { try { svg.setAttribute('preserveAspectRatio', 'xMidYMid meet'); } catch (_) {} }
     const ds = document.getElementById('drawSvg');
     if (!svg) return;
     const W = 680, H = 1050;
@@ -1156,10 +1252,11 @@ const BoardEngine = {
       `<circle cx="${W / 2}" cy="${H - 130}" r="3" fill="${L}"/>` +
       `<rect x="${W / 2 - 36.6}" y="5" width="73.2" height="15" fill="none" stroke="${L}" stroke-width="2"/>` +
       `<rect x="${W / 2 - 36.6}" y="${H - 20}" width="73.2" height="15" fill="none" stroke="${L}" stroke-width="2"/>` +
-      /* Watermark — background only, no pointer events, not in undo */
+      /* Watermark */
       `<text class="pitch-watermark" x="${W / 2}" y="${H / 2 - 36}" text-anchor="middle" dominant-baseline="auto" ` +
       `fill="rgba(255,255,255,0.15)" font-family="system-ui,-apple-system,Segoe UI,sans-serif" ` +
-      `font-weight="700" font-size="38" letter-spacing="2" pointer-events="none" style="user-select:none">Metalist Stuttgart</text>`;
+      `font-weight="700" font-size="38" letter-spacing="2" pointer-events="none" style="user-select:none">Metalist Stuttgart</text>` +
+      '';
   },
 
   /** Розмір фішки відносно видимої висоти поля (розмітка ~105м, гравець ~1.7%) */
@@ -1174,7 +1271,196 @@ const BoardEngine = {
     return { player, ball, cone, equip, font: Math.max(8, player * 0.32) };
   },
 
+
+  /** Лавка: UI + інтеграція з полем (drag / тап-постав) */
+  _bindBenchPanelOnce() {
+    if (this._benchBound) return;
+    this._benchBound = true;
+    const panel = document.getElementById('benchPanel');
+    if (!panel) return;
+    // Delegation: старт drag з лавки
+    panel.addEventListener('pointerdown', e => {
+      const chip = e.target.closest('.bench-chip');
+      if (!chip || !chip.dataset.id) return;
+      if (e.button === 2) return;
+      e.preventDefault();
+      e.stopPropagation();
+      this.startBenchDrag(chip.dataset.id, e);
+    }, { passive: false });
+    // Кнопка «на поле» / double intent
+    panel.addEventListener('click', e => {
+      const btn = e.target.closest('[data-bench-to-field]');
+      if (btn) {
+        e.preventDefault();
+        e.stopPropagation();
+        this.armBenchPlace(btn.getAttribute('data-bench-to-field'));
+        return;
+      }
+    });
+  },
+
+  /** Вибрати запасного: наступний тап по полю ставить його */
+  armBenchPlace(objId) {
+    this.pendingFromBenchId = objId;
+    Store.get().activeBoard.selectedId = objId;
+    Store.get().activeBoard.tool = 'select';
+    try { Toast.show('Тапніть по полю, щоб вивести гравця', 'ok'); } catch (_) {}
+    this.renderBenchPanel();
+    try { TelegramManager.haptic('light'); } catch (_) {}
+  },
+
+  startBenchDrag(objId, e) {
+    const s = Store.get();
+    const obj = (s.activeBoard.objects || []).find(o => o.id === objId && o.onBench);
+    if (!obj) return;
+    this.benchDragId = objId;
+    this.pendingFromBenchId = null;
+    s.activeBoard.selectedId = objId;
+    // Ghost
+    this._removeBenchGhost();
+    const ghost = document.createElement('div');
+    ghost.className = 'bench-ghost';
+    ghost.textContent = obj.number || '';
+    if (obj.chipColor || obj.color) ghost.style.background = obj.chipColor || obj.color;
+    document.body.appendChild(ghost);
+    this.benchGhost = ghost;
+    this._moveBenchGhost(e.clientX, e.clientY);
+    try { e.target.setPointerCapture && e.target.setPointerCapture(e.pointerId); } catch (_) {}
+    const move = (ev) => {
+      if (!this.benchDragId) return;
+      ev.preventDefault();
+      this._moveBenchGhost(ev.clientX, ev.clientY);
+    };
+    const up = (ev) => {
+      document.removeEventListener('pointermove', move, true);
+      document.removeEventListener('pointerup', up, true);
+      document.removeEventListener('pointercancel', up, true);
+      this.finishBenchDrag(ev.clientX, ev.clientY);
+    };
+    document.addEventListener('pointermove', move, { capture: true, passive: false });
+    document.addEventListener('pointerup', up, { capture: true });
+    document.addEventListener('pointercancel', up, { capture: true });
+    try { TelegramManager.haptic('medium'); } catch (_) {}
+  },
+
+  _moveBenchGhost(cx, cy) {
+    if (!this.benchGhost) return;
+    this.benchGhost.style.left = cx + 'px';
+    this.benchGhost.style.top = cy + 'px';
+  },
+
+  _removeBenchGhost() {
+    if (this.benchGhost && this.benchGhost.parentNode) this.benchGhost.parentNode.removeChild(this.benchGhost);
+    this.benchGhost = null;
+  },
+
+  finishBenchDrag(cx, cy) {
+    const id = this.benchDragId;
+    this.benchDragId = null;
+    this._removeBenchGhost();
+    if (!id) return;
+    const field = document.getElementById('fieldContainer');
+    const panel = document.getElementById('benchPanel');
+    const el = document.elementFromPoint(cx, cy);
+    // Drop на поле?
+    if (field && (field === el || field.contains(el))) {
+      const world = this.screenToWorld(cx, cy);
+      this.promoteFromBench(id, world.x, world.y);
+      return;
+    }
+    // Залишився на лавці — лише select
+    if (panel && (panel === el || panel.contains(el))) {
+      this.armBenchPlace(id);
+      return;
+    }
+  },
+
+  /** Запасний → поле */
+  promoteFromBench(objId, wx, wy) {
+    const s = Store.get();
+    const obj = (s.activeBoard.objects || []).find(o => o.id === objId);
+    if (!obj) return;
+    const pos = this.clampWorld(wx, wy);
+    obj.onBench = false;
+    obj.x = pos.x;
+    obj.y = pos.y;
+    // колір з палітри, якщо ще не заданий
+    if (!obj.chipColor && s.activeBoard.drawColor) {
+      obj.chipColor = s.activeBoard.drawColor;
+      obj.color = s.activeBoard.drawColor;
+    }
+    s.activeBoard.selectedId = objId;
+    this.pendingFromBenchId = null;
+    this.pushHistory();
+    this.render();
+    try { TelegramManager.haptic('medium'); } catch (_) {}
+    try { Toast.show('#' + (obj.number || '') + ' ' + (obj.label || '') + ' на полі', 'ok'); } catch (_) {}
+  },
+
+  /** Поле → лавка */
+  demoteToBench(objId) {
+    const s = Store.get();
+    const obj = (s.activeBoard.objects || []).find(o => o.id === objId);
+    if (!obj || obj.type === 'opponent' || obj.type === 'ball') return;
+    if (obj.type !== 'player' && obj.team !== 'own') return;
+    obj.onBench = true;
+    obj.x = 0;
+    obj.y = 0;
+    if (s.activeBoard.selectedId === objId) s.activeBoard.selectedId = null;
+    this.pushHistory();
+    this.render();
+    try { TelegramManager.haptic('light'); } catch (_) {}
+    try { Toast.show('#' + (obj.number || '') + ' на лавці', 'ok'); } catch (_) {}
+  },
+
+  renderBenchPanel() {
+    const list = document.getElementById('benchList');
+    const panel = document.getElementById('benchPanel');
+    if (!list || !panel) return;
+    this._bindBenchPanelOnce();
+    const s = Store.get();
+    const bench = (s.activeBoard.objects || []).filter(o => o.onBench && (o.type === 'player' || o.team === 'own'));
+    const pending = this.pendingFromBenchId;
+    if (!bench.length) {
+      list.innerHTML = '<div class="bench-empty">Немає запасних<br><span class="bench-hint">Перетягніть фішку з поля сюди</span></div>';
+      return;
+    }
+    list.innerHTML = bench.map(o => {
+      const pl = o.playerId ? (s.players || []).find(p => p.id === o.playerId) : null;
+      const readiness = o.readiness != null ? o.readiness : (pl && (pl.readiness != null ? pl.readiness : pl.condition)) || 70;
+      const loadVal = o.load != null ? o.load : (pl && pl.load != null ? pl.load : 0);
+      const ringC = readiness >= 80 ? '#2ecc71' : readiness >= 50 ? '#f1c40f' : '#e74c3c';
+      const loadPct = Math.max(0, Math.min(100, (loadVal / 10) * 100));
+      const bg = o.chipColor || o.color || '';
+      const st = o.status || (pl && pl.status) || '';
+      const inj = st === 'injured' ? '<span class="bench-tag inj">✚</span>' : '';
+      const bgStyle = bg ? 'background:' + bg : '';
+      const on = (pending === o.id || s.activeBoard.selectedId === o.id) ? ' on' : '';
+      return '<div class="bench-chip' + on + '" data-id="' + o.id + '" title="Перетягніть на поле або тап → тап по полю">' +
+        '<div class="bench-avatar" style="' + bgStyle + ';box-shadow:0 0 0 2px ' + ringC + '">' +
+        '<span class="bench-num">' + (o.number || '') + '</span></div>' +
+        '<div class="bench-meta"><span class="bench-pos">' + (o.position || (pl && pl.position) || '') + '</span> ' +
+        '<span class="bench-name">' + (o.label || '') + '</span>' + inj + '</div>' +
+        '<div class="bench-load" title="Load"><i style="width:' + loadPct + '%"></i></div>' +
+        '<button type="button" class="bench-to-field" data-bench-to-field="' + o.id + '" title="Вивести на поле">↗</button></div>';
+    }).join('');
+  },
+
+
+  /** Старі схеми: фішки «стовпчиком» на лівій бровці → лавка */
+  migrateLeftEdgeToBench() {
+    const s = Store.get();
+    const objs = s.activeBoard.objects || [];
+    const lefties = objs.filter(o =>
+      (o.type === 'player' || o.team === 'own') && !o.onBench && o.x != null && o.x < 0.08
+    );
+    // якщо ≥4 на лівому краї — це стара «лавка на полі»
+    if (lefties.length < 4) return;
+    lefties.forEach(o => { o.onBench = true; o.x = 0; o.y = 0; });
+  },
   renderTokens() {
+    this.migrateLeftEdgeToBench();
+    this.renderBenchPanel();
     const layer = document.getElementById('playersLayer');
     if (!layer) return;
     const s = Store.get();
@@ -1184,7 +1470,7 @@ const BoardEngine = {
     layer.style.setProperty('--ball-sz', m.ball + 'px');
     const equipTypes = ['cone','mannequin','pole','ladder','minigoal','hoop','flag','bib'];
     const objs = s.activeBoard.objects.filter(o =>
-      o.type === 'player' || o.type === 'opponent' || o.type === 'ball' || equipTypes.includes(o.type)
+      !o.onBench && (o.type === 'player' || o.type === 'opponent' || o.type === 'ball' || equipTypes.includes(o.type))
     );
     const sel = s.activeBoard.selectedId;
     let html = '';
@@ -1234,14 +1520,19 @@ const BoardEngine = {
       })());
       const cls = 'pt ' + (o.team === 'opp' ? 'opp' : (isGk ? 'gk' : 'own')) + (sel === o.id ? ' sel' : '');
       let readiness = o.readiness;
-      if (readiness == null && o.playerId) {
+      let loadVal = o.load;
+      if (o.playerId) {
         const pl = Store.get().players.find(p => p.id === o.playerId);
-        if (pl) readiness = pl.readiness != null ? pl.readiness : pl.condition;
+        if (pl) {
+          if (readiness == null) readiness = pl.readiness != null ? pl.readiness : pl.condition;
+          if (loadVal == null) loadVal = pl.load;
+        }
       }
-      const ringColor = readiness == null ? 'transparent'
-        : readiness >= 80 ? '#2ecc71' : readiness >= 50 ? '#f1c40f' : '#e74c3c';
+      if (readiness == null) readiness = 75;
+      const ringColor = readiness >= 80 ? '#2ecc71' : readiness >= 50 ? '#f1c40f' : '#e74c3c';
+      const loadNum = loadVal != null ? +loadVal : null;
       const ring = readiness != null
-        ? `<svg class="pt-ring" viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="16" fill="none" stroke="rgba(0,0,0,0.35)" stroke-width="3"/><circle cx="18" cy="18" r="16" fill="none" stroke="${ringColor}" stroke-width="3" stroke-dasharray="${(readiness/100)*100.5} 100.5" stroke-linecap="round" transform="rotate(-90 18 18)"/></svg>`
+        ? `<svg class="pt-ring" viewBox="0 0 36 36" aria-hidden="true" style="width:${m.player + 10}px;height:${m.player + 10}px"><circle cx="18" cy="18" r="16" fill="none" stroke="rgba(0,0,0,0.35)" stroke-width="3"/><circle cx="18" cy="18" r="16" fill="none" stroke="${ringColor}" stroke-width="3" stroke-dasharray="${(readiness/100)*100.5} 100.5" stroke-linecap="round" transform="rotate(-90 18 18)"/></svg>`
         : '';
       // Дані зі складу
       let pl = null;
@@ -1249,16 +1540,53 @@ const BoardEngine = {
       const posCode = o.position || (pl && pl.position) || (o.team === 'opp' ? '' : '');
       const status = o.status || (pl && pl.status) || '';
       const isInjured = status === 'injured';
+      const isRehab = status === 'rehab' || status === 'recovery';
       const isReserve = status === 'reserve' || (pl && pl.group === 'reserve');
-      const statusBadge = isInjured
-        ? '<span class="pt-badge pt-inj" title="Травма">✚</span>'
-        : (isReserve ? '<span class="pt-badge pt-res" title="Резерв">R</span>' : '');
-      const posBadge = posCode ? `<span class="pt-pos">${sanitize(posCode)}</span>` : '';
-      const titleName = (o.label || ('#' + (o.number || ''))) + (posCode ? ' · ' + posCode : '');
-      const titleExtra = (readiness != null ? ` · готовність ${readiness}%` : '') + (isInjured ? ' · ТРАВМА' : '') + (isReserve ? ' · резерв' : '');
-      const label = o.label ? `<span class="tn">${sanitize(o.label)}</span>` : '';
-      const extraCls = (isInjured ? ' injured' : '') + (isReserve ? ' reserve' : '');
-      html += `<div class="${cls}${extraCls}" data-id="${o.id}" style="left:${pct.left}%;top:${pct.top}%;width:${m.player}px;height:${m.player}px;font-size:${m.font}px" title="${sanitize(titleName + titleExtra)}">${ring}${statusBadge}${posBadge}<span class="pt-num">${o.number || ''}</span>${label}</div>`;
+      const isCaptain = !!(o.isCaptain || (pl && pl.isCaptain));
+      // Бейджі ТІЛЬКИ зверху фішки (не перекривають ім'я знизу)
+      const radialItems = [];
+      if (isCaptain) radialItems.push({ cls: 'pt-cap', text: 'C', title: 'Капітан' });
+      if (isInjured) radialItems.push({ cls: 'pt-inj', text: '✚', title: 'Травмований' });
+      else if (isRehab) radialItems.push({ cls: 'pt-rehab', text: '↻', title: 'Відновлення' });
+      else if (isReserve) radialItems.push({ cls: 'pt-res', text: 'R', title: 'Резерв' });
+      const rPx = m.player / 2;
+      const radiusOffset = rPx + 4;
+      // Кути лише у верхній півсфері: -140° … -40°
+      const statusBadge = radialItems.map((b, i) => {
+        const n = Math.max(radialItems.length, 1);
+        const angle = (-140 + (n === 1 ? 50 : (i * (100 / Math.max(n - 1, 1))))) * Math.PI / 180;
+        const ox = radiusOffset * Math.cos(angle);
+        const oy = radiusOffset * Math.sin(angle);
+        return '<span class="pt-badge ' + b.cls + '" title="' + b.title +
+          '" style="left:calc(50% + ' + ox.toFixed(1) + 'px);top:calc(50% + ' + oy.toFixed(1) + 'px)">' + b.text + '</span>';
+      }).join('');
+      // Load — кільце навколо фішки (не цифра)
+      const loadBadge = '';
+      // Позиція + ім'я одним рядком ПІД фішкою
+      const nameText = o.label || '';
+      const label = (nameText || posCode)
+        ? `<span class="tn">${posCode ? `<span class="tn-pos">${sanitize(posCode)}</span>` : ''}${nameText ? sanitize(nameText) : ''}</span>`
+        : '';
+      const titleName = (nameText || ('#' + (o.number || ''))) + (posCode ? ' · ' + posCode : '');
+      const titleExtra = (readiness != null ? ` · готовність ${readiness}%` : '')
+        + (isCaptain ? ' · КАПІТАН' : '')
+        + (isInjured ? ' · ТРАВМА' : '')
+        + (isRehab ? ' · ВІДНОВЛЕННЯ' : '')
+        + (isReserve ? ' · резерв' : '');
+      const extraCls = (isInjured ? ' injured' : '') + (isRehab ? ' rehab' : '') + (isReserve ? ' reserve' : '') + (isCaptain ? ' captain' : '');
+      const readyAttr = readiness != null ? ` data-ready="${Math.round(readiness)}"` : '';
+      // readiness — зовнішнє кільце; load (0-10) — товщина/інтенсивність другого кільця
+      const loadPct = loadNum != null && !isNaN(loadNum) ? Math.max(0, Math.min(10, loadNum)) / 10 : 0;
+      const loadCol = loadPct >= 0.7 ? '#e74c3c' : loadPct >= 0.4 ? '#f1c40f' : '#3498db';
+      const ringShadow = `box-shadow:0 0 0 3px ${ringColor},0 0 0 ${5 + loadPct * 3}px ${loadCol}55,0 2px 6px rgba(0,0,0,.45)`;
+      // SVG load arc (чіткий індикатор навколо фішки)
+      const loadArc = (loadNum != null && !isNaN(loadNum))
+        ? `<svg class="pt-load-ring" viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="15.5" fill="none" stroke="rgba(0,0,0,0.25)" stroke-width="2.5"/><circle cx="18" cy="18" r="15.5" fill="none" stroke="${loadCol}" stroke-width="2.5" stroke-dasharray="${loadPct * 97.4} 97.4" stroke-linecap="round" transform="rotate(-90 18 18)"/></svg>`
+        : `<svg class="pt-load-ring" viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="15.5" fill="none" stroke="${ringColor}" stroke-width="2.5" stroke-dasharray="${(readiness/100)*97.4} 97.4" stroke-linecap="round" transform="rotate(-90 18 18)"/></svg>`;
+      // Колір фішки: явний chipColor / fill / color, інакше CSS-клас own/opp/gk
+      const customBg = o.chipColor || o.fill || (o.team === 'own' || o.team === 'opp' ? o.color : null);
+      const bgStyle = customBg ? `background:${customBg} !important;border-color:rgba(255,255,255,.55);` : '';
+      html += `<div class="${cls}${extraCls}" data-id="${o.id}" data-r="${rPx}"${readyAttr} style="left:${pct.left}%;top:${pct.top}%;width:${m.player}px;height:${m.player}px;font-size:${m.font}px;--pt-r:${rPx}px;${ringShadow};${bgStyle}" title="${sanitize(titleName + titleExtra)}">${loadArc}${statusBadge}<span class="pt-num">${o.number || ''}</span>${label}</div>`;
     });
     layer.innerHTML = html;
     // Re-bind dblclick / contextmenu without inline handlers
@@ -1305,14 +1633,17 @@ const BoardEngine = {
 
     s.activeBoard.objects.forEach(o => {
       if (['arrow', 'arrowDash', 'pass', 'run', 'dribble', 'press', 'shot'].includes(o.type) && o.x2 != null) {
-        let col = o.color || this.strokeColorFor(o.type), mk = 'ah', dash = '', sw = 3;
-        if (o.type === 'pass') { col = o.color || '#3498db'; mk = 'ahb'; }
-        else if (o.type === 'press') { col = o.color || '#e74c3c'; mk = 'ahr'; }
-        else if (o.type === 'run') { col = '#2ecc71'; mk = 'ahg'; dash = 'stroke-dasharray="10,6"'; }
-        else if (o.type === 'dribble') { col = '#9b59b6'; mk = 'ah'; dash = 'stroke-dasharray="4,4"'; }
-        else if (o.type === 'shot') { col = '#fff'; mk = 'ahw'; sw = 4; }
-        else if (o.type === 'arrowDash') { dash = 'stroke-dasharray="8,6"'; }
-        html += `<line x1="${tx(o.x)}" y1="${ty(o.y)}" x2="${tx(o.x2)}" y2="${ty(o.y2)}" stroke="${col}" stroke-width="${sw}" marker-end="url(#${mk})" ${dash}/>`;
+        // o.color завжди пріоритетний (палітра); інакше дефолт типу
+        let col = o.color || this.strokeColorFor(o.type) || '#f1c40f';
+        let dash = '', sw = 3;
+        if (o.type === 'run' || o.type === 'arrowDash') dash = 'stroke-dasharray="10,6"';
+        if (o.type === 'dribble') dash = 'stroke-dasharray="4,4"';
+        if (o.type === 'shot') sw = 4;
+        const mkId = 'mk_' + String(col).replace(/[^a-zA-Z0-9]/g, '');
+        if (!html.includes('id="' + mkId + '"')) {
+          html += `<marker id="${mkId}" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="${col}"/></marker>`;
+        }
+        html += `<line x1="${tx(o.x)}" y1="${ty(o.y)}" x2="${tx(o.x2)}" y2="${ty(o.y2)}" stroke="${col}" stroke-width="${sw}" marker-end="url(#${mkId})" ${dash}/>`;
         if (o.step != null) {
           const mx = (tx(o.x) + tx(o.x2)) / 2, my = (ty(o.y) + ty(o.y2)) / 2;
           html += `<circle cx="${mx}" cy="${my}" r="11" fill="rgba(13,17,23,0.85)" stroke="${col}" stroke-width="1.5"/>`;
@@ -1548,97 +1879,103 @@ const BoardEngine = {
   },
 
   renderToolbar() {
-    const el = document.getElementById('boardToolbar');
-    if (!el) return;
+    const top = document.getElementById('boardToolbarTop') || document.getElementById('boardToolbar');
+    const bottom = document.getElementById('boardToolbarBottom');
+    if (!top && !bottom) return;
     const tool = Store.get().activeBoard.tool;
-    const collapsed = el.classList.contains('btb-collapsed') || localStorage.getItem('ms_btb_collapsed') === '1';
-    if (collapsed) el.classList.add('btb-collapsed');
-    else el.classList.remove('btb-collapsed');
-    el.innerHTML = `
-      <div class="tg btb-chrome" title="Керування панеллю">
+    const ab = Store.get().activeBoard;
+    const drawCol = ab.drawColor || '';
+    const paletteOpen = !!ab.paletteOpen;
+
+    // ── ВЕРХ: chrome у темній смузі ──
+    if (top) {
+      top.className = 'btb btb-top';
+      top.innerHTML = `
+      <div class="tg btb-chrome">
         <button type="button" class="tb tb-exit" data-action="exit-board" title="Вихід з дошки">✕</button>
-        <button type="button" class="tb" data-action="toggle-toolbar-collapse" title="Згорнути / розгорнути панель">↕</button>
-        <button type="button" class="tb" data-action="lock-toolbar" title="Зафіксувати панель">🔒</button>
-        <button type="button" class="tb" data-action="toggle-fullscreen" title="На весь екран">⛶</button>
+        <button type="button" class="tb tb-fs" data-action="toggle-fullscreen" title="Повний екран">⛶</button>
+        <button type="button" class="tb" data-action="zoom-out" title="Зменшити">−</button>
         <button type="button" class="tb" data-action="zoom-fit" title="Вписати поле">⊡</button>
-      </div>
-      <div class="btb-rows">
-      <div class="tg">
+        <button type="button" class="tb" data-action="zoom-in" title="Збільшити">+</button>
+        <button type="button" class="tb" data-action="to-bench" title="Виділеного на лавку">⬇ Лавка</button>
         <button class="tb" data-action="toggle-present" title="Режим показу">▶ Показ</button>
-      </div>
-      <div class="tg">
-        <button class="tb ${tool==='select'?'on':''}" data-tool="select" title="Вибір">↖</button>
-        <button class="tb ${tool==='player'?'on':''}" data-tool="player" title="Гравець">●</button>
-        <button class="tb ${tool==='opponent'?'on':''}" data-tool="opponent" title="Суперник">○</button>
-        <button class="tb ${tool==='ball'?'on':''}" data-tool="ball" title="М\'яч">⚽</button>
-      </div>
-      <div class="tg">
-        <button class="tb ${tool==='pass'?'on':''}" data-tool="pass" title="Передача (пас)">⇒</button>
-        <button class="tb ${tool==='run'?'on':''}" data-tool="run" title="Рух без м'яча">⇢</button>
-        <button class="tb ${tool==='dribble'?'on':''}" data-tool="dribble" title="Ведення">∿</button>
-        <button class="tb ${tool==='shot'?'on':''}" data-tool="shot" title="Удар">⚡</button>
-        <button class="tb ${tool==='press'?'on':''}" data-tool="press" title="Пресинг">⬇</button>
-        <button class="tb ${tool==='arrow'?'on':''}" data-tool="arrow" title="Стрілка">→</button>
-      </div>
-      <div class="tg" title="Колір стрілки">
-        <button type="button" class="tb color-swatch ${(Store.get().activeBoard.drawColor||'')==='#ecf0f1'?'on':''}" data-action="set-draw-color" data-color="#ecf0f1" title="Білий" style="background:#ecf0f1"></button>
-        <button type="button" class="tb color-swatch ${(Store.get().activeBoard.drawColor||'')==='#3498db'?'on':''}" data-action="set-draw-color" data-color="#3498db" title="Блакитний (пас)" style="background:#3498db"></button>
-        <button type="button" class="tb color-swatch ${(Store.get().activeBoard.drawColor||'')==='#2ecc71'?'on':''}" data-action="set-draw-color" data-color="#2ecc71" title="Зелений" style="background:#2ecc71"></button>
-        <button type="button" class="tb color-swatch ${(Store.get().activeBoard.drawColor||'')==='#f1c40f'?'on':''}" data-action="set-draw-color" data-color="#f1c40f" title="Жовтий (рух)" style="background:#f1c40f"></button>
-        <button type="button" class="tb color-swatch ${(Store.get().activeBoard.drawColor||'')==='#e67e22'?'on':''}" data-action="set-draw-color" data-color="#e67e22" title="Помаранчевий" style="background:#e67e22"></button>
-        <button type="button" class="tb color-swatch ${(Store.get().activeBoard.drawColor||'')==='#e74c3c'?'on':''}" data-action="set-draw-color" data-color="#e74c3c" title="Червоний (пресинг)" style="background:#e74c3c"></button>
-        <button type="button" class="tb color-swatch ${(Store.get().activeBoard.drawColor||'')==='#9b59b6'?'on':''}" data-action="set-draw-color" data-color="#9b59b6" title="Фіолетовий (ведення)" style="background:#9b59b6"></button>
-      </div>
-      <div class="tg">
-        <button class="tb ${tool==='zone'?'on':''}" data-tool="zone" title="Зона (прямокутник)">▢</button>
-        <button class="tb ${tool==='circle'?'on':''}" data-tool="circle" title="Зона (коло)">○</button>
-        <button class="tb ${tool==='polygon'?'on':''}" data-tool="polygon" title="Зона (багатокутник)">⬠</button>
-        <button class="tb ${tool==='freehand'?'on':''}" data-tool="freehand" title="Зона (вільна)">✎</button>
-        <button class="tb ${tool==='cone'?'on':''}" data-tool="cone" title="Фішка (конус)">△</button>
-        <button class="tb ${tool==='mannequin'?'on':''}" data-tool="mannequin" title="Манекен">▣</button>
-        <button class="tb ${tool==='pole'?'on':''}" data-tool="pole" title="Стійка">│</button>
-        <button class="tb ${tool==='ladder'?'on':''}" data-tool="ladder" title="Координаційна драбинка">≡</button>
-        <button class="tb ${tool==='minigoal'?'on':''}" data-tool="minigoal" title="Міні-ворота">⊓</button>
-        <button class="tb ${tool==='hoop'?'on':''}" data-tool="hoop" title="Обруч">◯</button>
-        <button class="tb ${tool==='flag'?'on':''}" data-tool="flag" title="Прапорець кутовий">⚑</button>
-        <button class="tb ${tool==='bib'?'on':''}" data-tool="bib" title="Манішка">▦</button>
-        <button class="tb ${tool==='text'?'on':''}" data-tool="text" title="Текст">T</button>
-      </div>
-      <div class="tg">
-        <select id="fieldViewSel" style="padding:3px 6px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px">
-          <option value="full">Повне поле</option><option value="half">Половина</option><option value="third">Атакувальна третина</option><option value="def-third">Оборонна третина</option><option value="penalty">Штрафний майданчик</option>
-          <option value="box">Штрафний (box)</option><option value="own">Своя третина</option><option value="opp">Чужа третина</option>
-        </select>
-      </div>
-      <div class="tg">
-        <select id="schemeSel" style="padding:3px 6px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px">
-          <option value="">Формація...</option>
-          ${Object.keys(SCHEMES).map(k => `<option value="${k}">${k}</option>`).join('')}
-        </select>
-      </div>
-      <div class="tg">
-        <button class="tb" data-action="zoom-out" title="Зменшити">−</button>
-        <button class="tb" data-action="zoom-fit" title="Вписати поле">⊡</button>
-        <button class="tb" data-action="zoom-in" title="Збільшити">+</button>
-      </div>
-      <div class="tg" title="Анімація та кроки">
-        <button class="tb" data-action="anim-play" title="Відтворити">▶</button>
-        <button class="tb" data-action="anim-pause" title="Пауза">⏸</button>
-        <button class="tb" data-action="anim-stop" title="Стоп">⏹</button>
-        <button class="tb" data-action="anim-step-prev" title="Попередній крок">⏮</button>
-        <button class="tb" data-action="anim-step-next" title="Наступний крок">⏭</button>
-        <span id="stepInd" class="step-ind" title="Поточний крок">—</span>
-        <input type="range" id="animSpeed" min="0.25" max="2" step="0.25" value="1" style="width:50px" title="Швидкість">
-        <button class="tb" data-action="export-gif" title="GIF анімований / статичний">GIF</button>
-        <button class="tb" data-action="export-gif-static" title="Статичний знімок GIF">📷</button>
-      </div>
-      <div class="tg">
+        <span class="btb-spacer"></span>
         <button class="tb" data-action="board-undo" title="Скасувати">↩</button>
         <button class="tb" data-action="board-redo" title="Повторити">↪</button>
         <button class="tb" data-action="board-clear" title="Очистити">🗑</button>
-        <button class="tb" data-action="board-save" title="Зберегти схему">💾</button>
-      </div>
+        <button class="tb" data-action="board-save" title="Зберегти">💾</button>
       </div>`;
+    }
+
+    // ── НИЗ: інструменти малювання у темній смузі ──
+    if (bottom) {
+      bottom.className = 'btb btb-bottom';
+      bottom.innerHTML = `
+      <div class="btb-rows">
+        <div class="tg">
+          <button class="tb ${tool==='select'?'on':''}" data-tool="select" title="Вибір">↖</button>
+          <button class="tb ${tool==='player'?'on':''}" data-tool="player" title="Гравець">●</button>
+          <button class="tb ${tool==='opponent'?'on':''}" data-tool="opponent" title="Суперник">○</button>
+          <button class="tb ${tool==='ball'?'on':''}" data-tool="ball" title="М'яч">⚽</button>
+        </div>
+        <div class="tg">
+          <button class="tb ${tool==='pass'?'on':''}" data-tool="pass" title="Пас">⇒</button>
+          <button class="tb ${tool==='run'?'on':''}" data-tool="run" title="Рух">⇢</button>
+          <button class="tb ${tool==='dribble'?'on':''}" data-tool="dribble" title="Ведення">∿</button>
+          <button class="tb ${tool==='press'?'on':''}" data-tool="press" title="Пресинг">⚡</button>
+          <button class="tb ${tool==='shot'?'on':''}" data-tool="shot" title="Удар">↓</button>
+          <button class="tb ${tool==='arrow'?'on':''}" data-tool="arrow" title="Стрілка">→</button>
+          <button class="tb ${tool==='arrowDash'?'on':''}" data-tool="arrowDash" title="Пунктир">⤳</button>
+        </div>
+        <div class="tg">
+          <button type="button" class="tb tb-palette-toggle" data-action="toggle-palette" title="Палітра">🎨</button>
+          <span class="palette-swatches ${paletteOpen ? 'open' : ''}" id="paletteSwatches">
+            <button type="button" class="tb color-swatch ${drawCol==='#ecf0f1'?'on':''}" data-action="set-draw-color" data-color="#ecf0f1" style="background:#ecf0f1" title="Білий"></button>
+            <button type="button" class="tb color-swatch ${drawCol==='#3498db'?'on':''}" data-action="set-draw-color" data-color="#3498db" style="background:#3498db" title="Синій"></button>
+            <button type="button" class="tb color-swatch ${drawCol==='#2ecc71'?'on':''}" data-action="set-draw-color" data-color="#2ecc71" style="background:#2ecc71" title="Зелений"></button>
+            <button type="button" class="tb color-swatch ${drawCol==='#f1c40f'?'on':''}" data-action="set-draw-color" data-color="#f1c40f" style="background:#f1c40f" title="Жовтий"></button>
+            <button type="button" class="tb color-swatch ${drawCol==='#e67e22'?'on':''}" data-action="set-draw-color" data-color="#e67e22" style="background:#e67e22" title="Помаранчевий"></button>
+            <button type="button" class="tb color-swatch ${drawCol==='#e74c3c'?'on':''}" data-action="set-draw-color" data-color="#e74c3c" style="background:#e74c3c" title="Червоний"></button>
+            <button type="button" class="tb color-swatch ${drawCol==='#9b59b6'?'on':''}" data-action="set-draw-color" data-color="#9b59b6" style="background:#9b59b6" title="Фіолетовий"></button>
+            <button type="button" class="tb color-swatch ${drawCol==='#1a73e8'?'on':''}" data-action="set-draw-color" data-color="#1a73e8" style="background:#1a73e8" title="Синій клуб"></button>
+          </span>
+        </div>
+        <div class="tg">
+          <button class="tb ${tool==='zone'?'on':''}" data-tool="zone" title="Зона">▢</button>
+          <button class="tb ${tool==='circle'?'on':''}" data-tool="circle" title="Коло">○</button>
+          <button class="tb ${tool==='polygon'?'on':''}" data-tool="polygon" title="Багатокутник">⬠</button>
+          <button class="tb ${tool==='freehand'?'on':''}" data-tool="freehand" title="Вільна">✎</button>
+          <button class="tb ${tool==='cone'?'on':''}" data-tool="cone" title="Конус">△</button>
+          <button class="tb ${tool==='mannequin'?'on':''}" data-tool="mannequin" title="Манекен">▣</button>
+          <button class="tb ${tool==='text'?'on':''}" data-tool="text" title="Текст">T</button>
+        </div>
+        <div class="tg">
+          <select id="fieldViewSel" title="Вид поля" style="padding:4px 6px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px">
+            <option value="full">Повне</option>
+            <option value="half">Половина</option>
+            <option value="attack">Атака</option>
+            <option value="defense">Захист</option>
+          </select>
+          <select id="schemeSel" title="Схема" style="padding:4px 6px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px">
+            <option value="">Схема…</option>
+            ${Object.keys(typeof SCHEMES!=='undefined'?SCHEMES:{}).map(k => '<option value="'+k+'">'+k+'</option>').join('')}
+          </select>
+        </div>
+        <div class="tg">
+          <button class="tb" data-action="anim-play" title="Відтворити">▶</button>
+          <button class="tb" data-action="anim-pause" title="Пауза">⏸</button>
+          <button class="tb" data-action="anim-stop" title="Стоп">⏹</button>
+          <button class="tb" data-action="anim-step-prev" title="Крок −">⏮</button>
+          <button class="tb" data-action="anim-step-next" title="Крок +">⏭</button>
+          <span id="stepInd" class="step-ind">—</span>
+          <button class="tb" data-action="export-gif" title="GIF">GIF</button>
+        </div>
+      </div>`;
+    } else if (top) {
+      // fallback single toolbar
+      top.innerHTML += '';
+    }
+
     const fv = document.getElementById('fieldViewSel');
     if (fv) {
       fv.value = Store.get().activeBoard.fieldView || 'full';
@@ -1652,9 +1989,8 @@ const BoardEngine = {
     }
     const ss = document.getElementById('schemeSel');
     if (ss) ss.onchange = () => { if (ss.value) BoardEngine.applyScheme(ss.value); };
-    const sp = document.getElementById('animSpeed');
-    if (sp) sp.oninput = () => { Store.get().activeBoard.anim.speed = parseFloat(sp.value) || 1; };
-  }
+  },
+
 };
 
 

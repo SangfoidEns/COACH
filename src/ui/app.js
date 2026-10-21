@@ -13,6 +13,7 @@ const App = {
     try { if (typeof AuthManager !== 'undefined') AuthManager.init(); } catch (e) { console.warn('Auth', e); }
     try { BoardEngine.init(); } catch (e) { console.warn('board', e); }
     const view = (Store.get().ui && Store.get().ui.view) || 'dashboard';
+    if (view === 'board') this.allowBoardOnce('logo');
     this.navigate(view);
     this.updateClock();
     setInterval(() => this.updateClock(), 1000);
@@ -31,7 +32,7 @@ const App = {
     const main = document.getElementById('main');
     if (!main || main.dataset.swipeBound) return;
     main.dataset.swipeBound = '1';
-    const order = ['dashboard', 'board', 'trainings', 'players', 'calendar'];
+    const order = ['dashboard', 'trainings', 'players', 'calendar', 'tactics'];
     let sx = 0, sy = 0, tracking = false;
     main.addEventListener('pointerdown', (e) => {
       if (document.body.classList.contains('mode-board-focus')) return;
@@ -50,13 +51,19 @@ const App = {
       const cur = this.currentView || 'dashboard';
       const i = order.indexOf(cur);
       if (i < 0) return;
-      if (dx < 0 && i < order.length - 1) this.navigate(order[i + 1]);
-      else if (dx > 0 && i > 0) this.navigate(order[i - 1]);
+      const next = dx < 0 && i < order.length - 1 ? order[i + 1] : (dx > 0 && i > 0 ? order[i - 1] : null);
+      if (!next) return;
+      if (next === 'board') this.allowBoardOnce('explicit');
+      this.navigate(next);
     }, { passive: true });
   },
 
   toggleMobileSidebar(force) {
-    const open = force != null ? force : !document.body.classList.contains('sb-open');
+    if (document.body.classList.contains('mode-board-focus')) {
+      // у режимі дошки меню не відкриваємо
+      force = false;
+    }
+    const open = force != null ? !!force : !document.body.classList.contains('sb-open');
     document.body.classList.toggle('sb-open', open);
     let backdrop = document.getElementById('sbBackdrop');
     if (open) {
@@ -64,12 +71,49 @@ const App = {
         backdrop = document.createElement('div');
         backdrop.id = 'sbBackdrop';
         backdrop.className = 'sb-backdrop';
-        backdrop.addEventListener('click', () => this.toggleMobileSidebar(false));
+        backdrop.setAttribute('aria-hidden', 'true');
+        backdrop.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          this.toggleMobileSidebar(false);
+        });
         document.body.appendChild(backdrop);
       }
+      try {
+        const tg = window.Telegram && window.Telegram.WebApp;
+        if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+      } catch (_) {}
     } else if (backdrop) {
       backdrop.remove();
     }
+  },
+
+  /** Свайп від лівого краю → відкрити drawer (як у Telegram) */
+  bindEdgeSwipeDrawer() {
+    if (this._edgeSwipeBound) return;
+    this._edgeSwipeBound = true;
+    let tracking = false;
+    let sx = 0, sy = 0;
+    const EDGE = 28;
+    document.addEventListener('pointerdown', (e) => {
+      if (document.body.classList.contains('mode-board-focus')) return;
+      if (document.body.classList.contains('sb-open')) return;
+      if (e.clientX > EDGE) return;
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      tracking = true;
+      sx = e.clientX;
+      sy = e.clientY;
+    }, { passive: true, capture: true });
+    document.addEventListener('pointerup', (e) => {
+      if (!tracking) return;
+      tracking = false;
+      const dx = e.clientX - sx;
+      const dy = e.clientY - sy;
+      if (dx > 56 && Math.abs(dx) > Math.abs(dy) * 1.15) {
+        this.toggleMobileSidebar(true);
+      }
+    }, { passive: true, capture: true });
+    document.addEventListener('pointercancel', () => { tracking = false; }, { passive: true });
   },
 
 
@@ -171,7 +215,7 @@ const App = {
       }
       const s = Store.get();
       if (!s || !s.activeBoard) {
-        this.navigate('board');
+        this.allowBoardOnce('logo'); this.navigate('board');
         return;
       }
       const defName = (s.settings && s.settings.defaultScheme) || '4-3-3';
@@ -184,7 +228,7 @@ const App = {
       } else if (typeof BoardEngine !== 'undefined' && typeof BoardEngine.applyScheme === 'function') {
         try { BoardEngine.applyScheme(defName); } catch (e) { console.warn('[scheme]', e); }
       }
-      this.navigate('board');
+      this.allowBoardOnce('logo'); this.navigate('board');
       setTimeout(() => {
         try {
           if (BoardEngine.render) BoardEngine.render();
@@ -195,7 +239,7 @@ const App = {
       try { Toast.show('Дошка · ' + defName, 'ok'); } catch (_) {}
     } catch (e) {
       console.error('[openDefaultBoard]', e);
-      try { this.navigate('board'); } catch (_) {}
+      try { this.allowBoardOnce('logo'); this.navigate('board'); } catch (_) {}
     }
   },
 
@@ -357,7 +401,7 @@ const App = {
   },
 
   initBoardToolbarDrag() {
-    const tb = document.getElementById('boardToolbar');
+    const tb = document.(document.getElementById('boardToolbarTop')||document.getElementById('boardToolbar'));
     if (!tb) return;
     // Після renderToolbar innerHTML зникає — відновлюємо хендл і позицію
     let handle = tb.querySelector('.btb-drag-handle');
@@ -418,6 +462,11 @@ const App = {
     });
   },
 
+  /** Дозволені причини переходу на дошку */
+  _boardNavReasons: new Set(['logo', 'preset', 'scheme', 'board-tpl', 'load-board', 'b3-phase', 'special']), // logo + explicit tactical presets only
+  allowBoardOnce(reason) {
+    this._boardNavToken = reason || 'explicit';
+  },
   navigate(view) {
     // iOS: після file picker focus може «клікнути» логотип — блокуємо
     try {
@@ -428,6 +477,16 @@ const App = {
         }
       }
     } catch (_) {}
+    // Дошка лише з явним allowBoardOnce(reason)
+    if (view === 'board') {
+      const token = this._boardNavToken;
+      this._boardNavToken = null;
+      if (!token || !this._boardNavReasons || !this._boardNavReasons.has(token)) {
+        console.warn('[navigate] board blocked — missing allow token', token);
+        return;
+      }
+    }
+    try { this.toggleMobileSidebar(false); } catch (_) {}
     Store.get().ui.view = view;
     document.querySelectorAll('.view').forEach(v => v.classList.remove('on'));
     const el = document.getElementById('v-' + view);
@@ -440,9 +499,11 @@ const App = {
       try { TelegramManager.showBackButton(); } catch (_) {}
       try { TelegramManager.haptic('light'); } catch (_) {}
     } else {
+      // Вихід з дошки — завжди знімаємо FS/board-only, інакше UI «мертвий»
+      try { if (typeof BoardEngine !== 'undefined' && BoardEngine.leaveBoardMode) BoardEngine.leaveBoardMode(); } catch (_) {}
       document.body.classList.remove(
         'board-workspace', 'mode-board-focus', 'board-only-mode', 'board-fs-nav',
-        'bw-nav', 'bw-props', 'bw-tools-collapsed', 'bw-nav-hide'
+        'bw-nav', 'bw-props', 'bw-tools-collapsed', 'bw-nav-hide', 'present-mode'
       );
       try { TelegramManager.hideBackButton(); } catch (_) {}
     }
@@ -551,14 +612,21 @@ const App = {
   bindEvents() {
     // Прямі прив'язки (iOS / Telegram): логотип і імпорт не залежать від делегації
     try { this.bindLogoAndImport(); } catch (e) { console.warn(e); }
+    try { this.bindEdgeSwipeDrawer(); } catch (e) { console.warn(e); }
+
+
 
     // Event delegation — single listener
     document.addEventListener('click', e => {
+      // ── Ізоляція: кліки всередині модалки / меню не повинні «випадково» відкривати дошку ──
+      const inModal = e.target.closest('#modal, .md, .modal-content, #modalBody, #modalFooter');
+      const inSidebarNav = e.target.closest('#sidebar .nav, .sidebar .nav, .sb-scroll');
+
       const t = e.target.closest('[data-action],[data-view],[data-tool],[data-ai],[data-edit-training],[data-del-training],[data-dup-training],[data-edit-player],[data-del-player],[data-scheme],[data-load-board],[data-del-board],[data-special],[data-day],[data-view-exercise],[data-view-match],[data-del-match],[data-tpl],[data-modal-action],[data-b3-phase],[data-board-tpl],[data-b3-rot],[data-del-myex],[data-add-myex-tr],[data-load-myex-board],[data-del-diary],[data-edit-diary],[data-load-diary-board],[data-diary-filter],[data-play-anim]');
       if (!t) {
         // close search
         if (!e.target.closest('.gs')) document.getElementById('gResults')?.classList.remove('show');
-        // close modal on backdrop
+        // close modal on backdrop only
         if (e.target.id === 'modal') Modal.close();
         return;
       }
@@ -566,7 +634,36 @@ const App = {
       const action = t.dataset.action;
       const view = t.dataset.view;
 
-      if (view && !t.dataset.action) { e.preventDefault(); App.navigate(view); return; }
+      // Редагування / CRUD — ніколи не відкривають дошку
+      if (t.dataset.editTraining || t.dataset.delTraining || t.dataset.dupTraining ||
+          t.dataset.editPlayer || t.dataset.delPlayer || t.dataset.editDiary ||
+          t.dataset.delDiary || t.dataset.delMyex || t.dataset.delMatch ||
+          t.dataset.delBoard || t.dataset.modalAction ||
+          e.target.closest('.card-training')) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+      }
+
+      // data-view навігація: блокуємо, якщо це вкладений клік у кнопці редагування
+      if (view && !t.dataset.action) {
+        if (e.target.closest('[data-edit-training],[data-del-training],[data-dup-training],[data-edit-player],[data-del-player],[data-modal-action],.card-training,#modal,.mo')) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+        // data-view="board" з меню ЗАБОРОНЕНО — лише логотип / пресет
+        if (view === 'board') {
+          e.preventDefault();
+          e.stopPropagation();
+          console.warn('[router] data-view=board blocked from menu');
+          return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        App.navigate(view);
+        return;
+      }
       if (t.dataset.tool) { Store.get().activeBoard.tool = t.dataset.tool; BoardEngine.renderToolbar(); return; }
       if (t.dataset.ai) {
         const map = { training: () => AIService.generateTraining(), warmup: () => AIService.generateExercise('warmup'),
@@ -647,8 +744,11 @@ const App = {
       if (action === 'extimer-pause') return TimerEngine.pauseEx();
       if (action === 'extimer-reset') return TimerEngine.resetEx();
       if (action === 'toggle-present') {
+        if (Store.get().ui.view !== 'board') {
+          Toast.show('Спочатку відкрийте дошку через логотип', 'warn');
+          return;
+        }
         document.body.classList.toggle('present-mode');
-        App.navigate('board');
         Toast.show(document.body.classList.contains('present-mode') ? 'Presentation ON' : 'Presentation OFF');
         return;
       }
@@ -657,7 +757,7 @@ const App = {
       if (action === 'toggle-tools') return App.toggleTools();
       if (action === 'show-all-panels') return App.showAllPanels();
       if (action === 'toggle-toolbar-collapse') {
-        const tb = document.getElementById('boardToolbar');
+        const tb = document.(document.getElementById('boardToolbarTop')||document.getElementById('boardToolbar'));
         if (tb) {
           tb.classList.toggle('btb-collapsed');
           localStorage.setItem('ms_btb_collapsed', tb.classList.contains('btb-collapsed') ? '1' : '0');
@@ -666,7 +766,7 @@ const App = {
         return;
       }
       if (action === 'lock-toolbar') {
-        const tb = document.getElementById('boardToolbar');
+        const tb = document.(document.getElementById('boardToolbarTop')||document.getElementById('boardToolbar'));
         if (tb) {
           tb.classList.toggle('btb-locked');
           const locked = tb.classList.contains('btb-locked');
@@ -675,14 +775,40 @@ const App = {
         }
         return;
       }
-      if (action === 'set-draw-color') {
-        const col = t.dataset.color || '#f1c40f';
-        Store.get().activeBoard.drawColor = col;
+      if (action === 'toggle-palette') {
+        e.preventDefault(); e.stopPropagation();
+        const ab = Store.get().activeBoard;
+        ab.paletteOpen = !ab.paletteOpen;
         try { BoardEngine.renderToolbar(); } catch (_) {}
-        Toast.show('Колір стрілки', 'ok');
+        return;
+      }
+      if (action === 'set-draw-color') {
+        e.preventDefault(); e.stopPropagation();
+        const col = t.dataset.color || '#f1c40f';
+        const ab = Store.get().activeBoard;
+        ab.drawColor = col;
+        // Застосувати до виділеного об'єкта (стрілка, зона, фішка своєї/чужої команди)
+        const sel = ab.selectedId;
+        if (sel) {
+          const obj = (ab.objects || []).find(o => o.id === sel);
+          if (obj) {
+            obj.color = col;
+            if (obj.type === 'player' || obj.team === 'own' || obj.team === 'opp' || obj.number != null) {
+              obj.chipColor = col;
+              obj.fill = col;
+            }
+          }
+        }
+        try { BoardEngine.render(); BoardEngine.renderToolbar(); } catch (_) {}
+        Toast.show(sel ? 'Колір на виділене' : 'Колір задано — тепер додавайте фішки / схему', 'ok');
         return;
       }
       if (action === 'exit-board') {
+        e.preventDefault(); e.stopPropagation();
+        try { BoardEngine.leaveBoardMode && BoardEngine.leaveBoardMode(); } catch (_) {
+          try { BoardEngine.exitFullscreen && BoardEngine.exitFullscreen(); } catch (_) {}
+          document.body.classList.remove('board-fs-nav','board-only-mode','mode-board-focus','board-workspace','present-mode');
+        }
         App.navigate('dashboard');
         return;
       }
@@ -691,6 +817,13 @@ const App = {
       if (action === 'zoom-in') return BoardEngine.setZoom(BoardEngine.camera.zoom * 1.2);
       if (action === 'zoom-out') return BoardEngine.setZoom(BoardEngine.camera.zoom / 1.2);
       if (action === 'zoom-fit') return BoardEngine.fitField();
+      if (action === 'to-bench') {
+        e.preventDefault(); e.stopPropagation();
+        const id = Store.get().activeBoard.selectedId;
+        if (!id) { try { Toast.show('Спочатку виділіть фішку на полі', 'warn'); } catch (_) {} return; }
+        BoardEngine.demoteToBench(id);
+        return;
+      }
       if (action === 'board-undo') return BoardEngine.undo();
       if (action === 'board-redo') return BoardEngine.redo();
       if (action === 'board-clear') return BoardEngine.clear();
@@ -709,27 +842,54 @@ const App = {
       if (action === 'microcycle') return Actions.applyMicrocycle();
       if (action === 'export-stats') return StorageManager.exportJSON();
 
-      if (t.dataset.editTraining) return Actions.editTraining(t.dataset.editTraining);
+      if (t.dataset.editTraining) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+        // ТІЛЬКИ модалка деталей — без переходу на дошку
+        return Actions.editTraining(t.dataset.editTraining);
+      }
+      if (action === 'open-training-board') {
+        e.preventDefault(); e.stopPropagation();
+        Modal.close();
+        Toast.show('Відкрийте дошку через логотип клубу в шапці', 'ok');
+        return;
+      }
       if (t.dataset.delTraining) return Modal.confirm('Видалити тренування?', () => { Store.get().trainings = Store.get().trainings.filter(x => x.id !== t.dataset.delTraining); StorageManager.save(); App.renderCurrent(); Toast.show('Видалено'); });
       if (t.dataset.dupTraining) return Actions.dupTraining(t.dataset.dupTraining);
-      if (t.dataset.editPlayer) return Actions.editPlayer(t.dataset.editPlayer);
+      if (t.dataset.editPlayer) {
+        e.preventDefault(); e.stopPropagation();
+        if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+        return Actions.editPlayer(t.dataset.editPlayer);
+      }
       if (t.dataset.delPlayer) return Modal.confirm('Видалити гравця?', () => { Store.get().players = Store.get().players.filter(x => x.id !== t.dataset.delPlayer); StorageManager.save(); App.renderCurrent(); });
-      if (t.dataset.scheme) { BoardEngine.applyScheme(t.dataset.scheme); App.navigate('board'); return; }
-      if (t.dataset.boardTpl) {
-        BoardEngine.applyScheme(t.dataset.boardTpl);
+      if (t.dataset.scheme) {
+        e.preventDefault(); e.stopPropagation();
+        BoardEngine.applyScheme(t.dataset.scheme);
+        App.allowBoardOnce('scheme');
         App.navigate('board');
-        Toast.show('Шаблон відкрито на дошці — можна змінювати', 'ok');
+        Toast.show('Схема: ' + t.dataset.scheme, 'ok');
+        return;
+      }
+      if (t.dataset.boardTpl) {
+        e.preventDefault(); e.stopPropagation();
+        BoardEngine.applyScheme(t.dataset.boardTpl);
+        App.allowBoardOnce('board-tpl');
+        App.navigate('board');
+        Toast.show('Шаблон на дошці', 'ok');
         return;
       }
       if (t.dataset.b3Phase) {
+        e.preventDefault(); e.stopPropagation();
         BoardEngine.applyScheme(t.dataset.b3Phase);
+        App.allowBoardOnce('b3-phase');
         App.navigate('board');
         Toast.show('Фаза: ' + (t.dataset.b3Name || t.dataset.b3Phase), 'ok');
         return;
       }
       if (t.dataset.b3Rot) {
-        Toast.show('Ротація: ' + t.dataset.b3Rot + ' — розставте на дошці', 'ok');
-        App.navigate('board');
+        Toast.show('Ротація: ' + t.dataset.b3Rot + ' — відкрийте дошку через логотип', 'ok');
+        return;
         return;
       }
       if (t.dataset.delMyex) {
@@ -762,12 +922,14 @@ const App = {
         return;
       }
       if (t.dataset.loadMyexBoard) {
+        e.preventDefault(); e.stopPropagation();
         const ex = (Store.get().myExercises || []).find(x => x.id === t.dataset.loadMyexBoard);
         if (ex && ex.board) {
           Store.get().activeBoard.objects = JSON.parse(JSON.stringify(ex.board.objects || []));
-          BoardEngine.render();
+          App.allowBoardOnce('preset');
           App.navigate('board');
-          Toast.show('Дошка вправи завантажена');
+          setTimeout(() => { try { BoardEngine.render(); } catch (_) {} }, 50);
+          Toast.show('Дошка вправи', 'ok');
         }
         return;
       }
@@ -779,11 +941,12 @@ const App = {
         return;
       }
       if (t.dataset.loadDiaryBoard) {
+        e.preventDefault(); e.stopPropagation();
         const d = (Store.get().diary || []).find(x => x.id === t.dataset.loadDiaryBoard);
         if (d && d.board) {
           Store.get().activeBoard.objects = JSON.parse(JSON.stringify(d.board.objects || []));
-          BoardEngine.render();
-          App.navigate('board');
+          try { BoardEngine.render(); } catch (_) {}
+          Toast.show('Зі щоденника завантажено. Відкрийте дошку через логотип.', 'ok');
         }
         return;
       }
@@ -796,25 +959,33 @@ const App = {
         return;
       }
       if (t.dataset.playAnim) {
+        e.preventDefault(); e.stopPropagation();
         const anim = (Store.get().animations || []).find(a => a.id === t.dataset.playAnim);
         if (anim && anim.board) {
           Store.get().activeBoard.objects = JSON.parse(JSON.stringify(anim.board.objects || []));
-          BoardEngine.render();
-          App.navigate('board');
-          BoardEngine.animPlay && BoardEngine.animPlay();
-          Toast.show('Анімація: ' + (anim.name || ''), 'ok');
+          try { BoardEngine.render(); } catch (_) {}
+          Toast.show('Анімацію завантажено. Відкрийте дошку через логотип.', 'ok');
         }
         return;
       }
 
-      if (t.dataset.loadBoard) return BoardEngine.loadBoard(t.dataset.loadBoard);
+      if (t.dataset.loadBoard) {
+        e.preventDefault(); e.stopPropagation();
+        BoardEngine.loadBoard(t.dataset.loadBoard);
+        App.allowBoardOnce('load-board');
+        App.navigate('board');
+        Toast.show('Заготовку відкрито на дошці', 'ok');
+        return;
+      }
       if (t.dataset.delBoard) return Modal.confirm('Видалити схему?', () => { Store.get().boards = Store.get().boards.filter(x => x.id !== t.dataset.delBoard); StorageManager.save(); App.renderCurrent(); });
       if (t.dataset.special) {
+        e.preventDefault(); e.stopPropagation();
         const map = {
           attack: '4-3-3', defense: '5-3-2', press: '4-2-3-1',
           setpiece: '4-4-2', transition: '4-1-4-1', highpress: '3-4-3'
         };
         BoardEngine.applyScheme(map[t.dataset.special] || '4-3-3');
+        App.allowBoardOnce('special');
         App.navigate('board');
         Toast.show('Схема: ' + (t.dataset.special || ''), 'ok');
         return;
@@ -826,6 +997,12 @@ const App = {
       if (t.dataset.tpl) return Actions.applyTemplate(t.dataset.tpl);
 
       if (t.dataset.modalAction === 'cancel') return Modal.close();
+      if (t.dataset.modalAction === 'open-training-board') {
+        e.preventDefault(); e.stopPropagation();
+        Modal.close();
+        Toast.show('Відкрийте дошку через логотип клубу в шапці', 'ok');
+        return;
+      }
       if (t.dataset.modalAction === 'confirm') {
         const fn = Modal._onConfirm;
         Modal.close();
