@@ -1119,11 +1119,15 @@ body.mode-board-focus #boardToolbar.btb {
 body.mode-board-focus #playersLayer .pt,
 body.mode-board-focus #playersLayer .ball,
 body.mode-board-focus #playersLayer .eq {
-  max-width: 20px !important;
-  max-height: 24px !important;
+  max-width: 22px !important;
+  max-height: 26px !important;
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
+}
+#playersLayer .eq.inv-goal {
+  max-width: 56px !important;
+  max-height: 40px !important;
 }
 
 #boardToolbar .tb-exit {
@@ -3940,8 +3944,8 @@ body.board-only-mode #boardToolbarBottom.btb-bottom {
   max-height: 22px !important;
 }
 #playersLayer .eq.inv-goal {
-  max-width: 28px !important;
-  max-height: 20px !important;
+  max-width: 56px !important;
+  max-height: 40px !important;
 }
 #playersLayer .eq.inv-ladder {
   max-width: 24px !important;
@@ -4095,4 +4099,84 @@ body.role-player .mni[data-view="board"] { display: none !important; }
 #playersLayer .pt .pt-status-badge {
   position: relative;
   z-index: 2;
+}
+
+/* Лавка: індикатор готовності/load як на полі */
+.bench-avatar-wrap {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.bench-ring {
+  position: absolute;
+  inset: 0;
+  width: 40px;
+  height: 40px;
+  pointer-events: none;
+  z-index: 0;
+}
+.bench-avatar-wrap .bench-avatar {
+  position: relative;
+  z-index: 1;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 800;
+  border: none;
+  box-shadow: 0 1px 3px rgba(0,0,0,.4);
+}
+.bench-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  min-height: 44px;
+}
+
+/* ═══ Нижня панель дошки не обрізається ═══ */
+#v-board.view-board,
+#v-board.view.on,
+body.mode-board-focus #v-board {
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100% !important;
+  max-height: 100% !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  padding-bottom: 0 !important;
+}
+#v-board #boardToolbarTop.btb-top,
+#v-board #boardToolbarBottom.btb-bottom {
+  flex: 0 0 auto !important;
+  position: relative !important;
+  z-index: 60 !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+#v-board #boardToolbarBottom.btb-bottom {
+  padding-bottom: max(12px, env(safe-area-inset-bottom, 0px) + 8px) !important;
+  min-height: 52px !important;
+  overflow-x: auto !important;
+  overflow-y: visible !important;
+  -webkit-overflow-scrolling: touch;
+}
+#v-board #boardArea.ba {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+/* Не ховати панель під клавіатурою Telegram — підняти над home indicator */
+body.mode-board-focus #boardToolbarBottom {
+  margin-bottom: 0 !important;
+  box-shadow: 0 -4px 20px rgba(0,0,0,.35) !important;
 }

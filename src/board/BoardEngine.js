@@ -1355,21 +1355,22 @@ const BoardEngine = {
   tokenMetrics() {
     const c = document.getElementById('fieldContainer');
     const h = (c && c.clientHeight) || 600;
-    // Фішки гравців — як раніше (до збільшення ×2)
-    const player = Math.max(18, Math.min(34, h * 0.024));
-    const ball = Math.max(8, Math.min(14, player * 0.38));
-    // Інвентар ×2 від «крихітного» варіанту, чітко менший за фішку
-    const inv = Math.max(8, Math.min(16, player * 0.42));
-    const cone = Math.max(9, inv * 1.05);
+    // Гравці ×2 відносно попереднього стабільного розміру
+    const player = Math.max(32, Math.min(52, h * 0.048));
+    const ball = Math.max(10, Math.min(18, player * 0.34));
+    // Інвентар пропорційний, ворота окремо більші (goal)
+    const inv = Math.max(10, Math.min(18, player * 0.32));
+    const cone = Math.max(10, inv * 1.05);
     const equip = inv;
-    const chip = Math.max(8, inv * 0.95);
-    const chipLg = Math.max(10, inv * 1.2);
-    const mark = Math.max(5, inv * 0.55);
-    const markSq = Math.max(8, inv * 0.95);
+    const chip = Math.max(9, inv * 0.95);
+    const chipLg = Math.max(11, inv * 1.15);
+    const mark = Math.max(6, inv * 0.5);
+    const markSq = Math.max(9, inv * 0.9);
+    const goal = Math.max(28, Math.min(48, player * 0.85)); // міні-ворота ≈ ×2+ від інвентарю
     return {
-      player, ball, cone, equip, chip, chipLg, mark, markSq, inv,
-      font: Math.max(9, Math.min(14, player * 0.36)),
-      ringPad: Math.max(10, Math.round(player * 0.45))
+      player, ball, cone, equip, chip, chipLg, mark, markSq, inv, goal,
+      font: Math.max(12, Math.min(18, player * 0.34)),
+      ringPad: Math.max(12, Math.round(player * 0.4))
     };
   },
 
@@ -1532,7 +1533,13 @@ const BoardEngine = {
     const chipHtml = (o) => {
       const pl = o.playerId ? (s.players || []).find(p => p.id === o.playerId) : null;
       const readiness = o.readiness != null ? o.readiness : (pl && (pl.readiness != null ? pl.readiness : pl.condition)) || 70;
+      const loadVal = o.load != null ? o.load : (pl && pl.load != null ? pl.load : null);
       const ringC = readiness >= 80 ? '#2ecc71' : readiness >= 50 ? '#f1c40f' : '#e74c3c';
+      const loadPct = loadVal != null ? Math.max(0, Math.min(1, (+loadVal) / 10)) : (readiness / 100);
+      const loadCol = loadVal != null
+        ? (loadPct >= 0.7 ? '#e74c3c' : loadPct >= 0.4 ? '#f1c40f' : '#3498db')
+        : ringC;
+      const circ = 2 * Math.PI * 15;
       const bg = o.chipColor || o.color || '';
       const st = o.status || (pl && pl.status) || '';
       const grp = (pl && pl.group) || '';
@@ -1542,9 +1549,13 @@ const BoardEngine = {
       else if (grp === 'reserve') tag = '<span class="bench-tag res">R</span>';
       const bgStyle = bg ? 'background:' + bg : '';
       const on = (pending === o.id || s.activeBoard.selectedId === o.id) ? ' on' : '';
-      return '<div class="bench-chip' + on + '" data-id="' + o.id + '" title="Перетягніть на поле">' +
-        '<div class="bench-avatar" style="' + bgStyle + ';box-shadow:0 0 0 2px ' + ringC + '">' +
-        '<span class="bench-num">' + (o.number || '') + '</span></div>' +
+      const ringSvg = '<svg class="bench-ring" viewBox="0 0 40 40" aria-hidden="true">' +
+        '<circle cx="20" cy="20" r="15" fill="none" stroke="rgba(0,0,0,0.35)" stroke-width="3.5"/>' +
+        '<circle cx="20" cy="20" r="15" fill="none" stroke="' + loadCol + '" stroke-width="3.5" stroke-dasharray="' +
+        (loadPct * circ) + ' ' + circ + '" stroke-linecap="round" transform="rotate(-90 20 20)"/></svg>';
+      return '<div class="bench-chip' + on + '" data-id="' + o.id + '" title="Перетягніть на поле · готовність ' + Math.round(readiness) + '%">' +
+        '<div class="bench-avatar-wrap">' + ringSvg +
+        '<div class="bench-avatar" style="' + bgStyle + '"><span class="bench-num">' + (o.number || '') + '</span></div></div>' +
         '<div class="bench-meta"><span class="bench-pos">' + (o.position || (pl && pl.position) || '') + '</span> ' +
         '<span class="bench-name">' + (o.label || '') + '</span>' + tag + '</div></div>';
     };
@@ -1654,8 +1665,8 @@ const BoardEngine = {
         return;
       }
       if (o.type === 'minigoal') {
-        const s = m.equip * 1.5;
-        html += `<div class="eq inv-goal" data-id="${o.id}" style="${L};width:${s * 1.3}px;height:${s * 0.85}px">` +
+        const s = m.goal || (m.equip * 3);
+        html += `<div class="eq inv-goal" data-id="${o.id}" style="${L};width:${s}px;height:${s * 0.7}px">` +
           `<svg viewBox="0 0 40 28" width="100%" height="100%"><path d="M4 26 V8 H36 V26" fill="none" stroke="#ecf0f1" stroke-width="2.2"/><path d="M4 8 H36" stroke="#ecf0f1" stroke-width="1.5" opacity=".5"/><line x1="12" y1="8" x2="12" y2="26" stroke="rgba(255,255,255,.25)" stroke-width="1"/><line x1="20" y1="8" x2="20" y2="26" stroke="rgba(255,255,255,.25)" stroke-width="1"/><line x1="28" y1="8" x2="28" y2="26" stroke="rgba(255,255,255,.25)" stroke-width="1"/></svg></div>`;
         return;
       }
