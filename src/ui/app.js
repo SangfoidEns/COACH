@@ -493,14 +493,31 @@ const App = {
     }
     try { this.toggleMobileSidebar(false); } catch (_) {}
     Store.get().ui.view = view;
-    document.querySelectorAll('.view').forEach(v => v.classList.remove('on'));
+    document.querySelectorAll('.view').forEach(v => {
+      v.classList.remove('on');
+      // Гарантовано ховаємо неактивні екрани (CSS !important інколи перебивав display)
+      if (v.id === 'v-board' || v.classList.contains('view-board')) {
+        v.style.display = 'none';
+        v.setAttribute('aria-hidden', 'true');
+      }
+    });
     const el = document.getElementById('v-' + view);
-    if (el) el.classList.add('on');
+    if (el) {
+      el.classList.add('on');
+      el.style.display = '';
+      el.removeAttribute('aria-hidden');
+    }
     document.querySelectorAll('.nav, .mni').forEach(n => n.classList.toggle('on', n.dataset.view === view));
     // Canvas-first workspace on board
     if (view === 'board') {
       document.body.classList.add('board-workspace', 'mode-board-focus');
       document.body.classList.remove('bw-props', 'bw-tools-collapsed', 'bw-nav-hide');
+      const boardEl = document.getElementById('v-board');
+      if (boardEl) {
+        boardEl.classList.add('on');
+        boardEl.style.display = 'flex';
+        boardEl.setAttribute('aria-hidden', 'false');
+      }
       try { TelegramManager.showBackButton(); } catch (_) {}
       try { TelegramManager.haptic('light'); } catch (_) {}
     } else {
@@ -510,6 +527,12 @@ const App = {
         'board-workspace', 'mode-board-focus', 'board-only-mode', 'board-fs-nav',
         'bw-nav', 'bw-props', 'bw-tools-collapsed', 'bw-nav-hide', 'present-mode'
       );
+      const boardEl = document.getElementById('v-board');
+      if (boardEl) {
+        boardEl.classList.remove('on');
+        boardEl.style.display = 'none';
+        boardEl.setAttribute('aria-hidden', 'true');
+      }
       try { TelegramManager.hideBackButton(); } catch (_) {}
     }
     this.renderCurrent();

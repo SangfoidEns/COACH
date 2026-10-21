@@ -1058,7 +1058,7 @@ body.mode-board-focus .main {
   overflow: hidden !important;
   background: #0a1210 !important;
 }
-body.mode-board-focus #v-board.view-board,
+body.mode-board-focus #v-board.view-board.on,
 body.mode-board-focus .view-board.on {
   display: flex !important;
   flex-direction: column !important;
@@ -3635,8 +3635,8 @@ body.board-fs-nav #boardToolbar .tb {
 }
 
 /* ═══ FULL-BLEED FIELD: без темних смуг зверху/знизу ═══ */
-body.mode-board-focus .view-board,
-body.board-workspace .view-board,
+body.mode-board-focus .view-board.on,
+body.board-workspace .view-board.on,
 #v-board.view-board.on {
   display: flex !important;
   flex-direction: column !important;
@@ -3741,8 +3741,8 @@ body.board-workspace .bench-panel {
 
 /* ═══ TOP + BOTTOM TOOLBARS in dark chrome zones (not over grass) ═══ */
 #v-board.view-board.on,
-body.mode-board-focus #v-board,
-body.board-workspace #v-board {
+body.mode-board-focus #v-board.on,
+body.board-workspace #v-board.on {
   display: flex !important;
   flex-direction: column !important;
   height: 100% !important;
@@ -4142,9 +4142,10 @@ body.role-player .mni[data-view="board"] { display: none !important; }
 }
 
 /* ═══ Нижня панель дошки не обрізається ═══ */
-#v-board.view-board,
-#v-board.view.on,
-body.mode-board-focus #v-board {
+/* ТІЛЬКИ активна дошка (.on) — інакше #v-board вилазить на всі сторінки */
+#v-board.view-board.on,
+body.mode-board-focus #v-board.on,
+body.board-workspace #v-board.on {
   display: flex !important;
   flex-direction: column !important;
   height: 100% !important;
@@ -4152,6 +4153,13 @@ body.mode-board-focus #v-board {
   min-height: 0 !important;
   overflow: hidden !important;
   padding-bottom: 0 !important;
+}
+#v-board.view-board:not(.on) {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  height: 0 !important;
+  overflow: hidden !important;
 }
 #v-board #boardToolbarTop.btb-top,
 #v-board #boardToolbarBottom.btb-bottom {
@@ -4179,4 +4187,88 @@ body.mode-board-focus #v-board {
 body.mode-board-focus #boardToolbarBottom {
   margin-bottom: 0 !important;
   box-shadow: 0 -4px 20px rgba(0,0,0,.35) !important;
+}
+
+/* ═══ Фішки на полі = стиль лавки ═══ */
+#playersLayer .pt {
+  position: absolute !important;
+  transform: translate(-50%, -50%) !important;
+  border-radius: 50% !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: 0 2px 6px rgba(0,0,0,.45) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  overflow: visible !important;
+  background: var(--own, #1a73e8);
+}
+#playersLayer .pt.gk { background: var(--gk, #f1c40f) !important; color: #1a1a1a !important; }
+#playersLayer .pt.own { background: var(--own, #1a73e8) !important; }
+#playersLayer .pt.opp { background: var(--opp, #e74c3c) !important; }
+#playersLayer .pt.sel {
+  box-shadow: 0 0 0 2px #d5ff3f, 0 2px 8px rgba(0,0,0,.5) !important;
+}
+#playersLayer .pt-load-ring {
+  position: absolute !important;
+  left: 50% !important;
+  top: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  pointer-events: none !important;
+  z-index: 0 !important;
+  overflow: visible !important;
+}
+#playersLayer .pt .pt-num {
+  position: relative !important;
+  z-index: 2 !important;
+  font-weight: 800 !important;
+  line-height: 1 !important;
+  pointer-events: none !important;
+  color: #fff !important;
+  text-shadow: 0 1px 2px rgba(0,0,0,.35);
+}
+#playersLayer .pt.gk .pt-num { color: #1a1a1a !important; text-shadow: none; }
+#playersLayer .pt .tn {
+  position: absolute !important;
+  top: calc(100% + 3px) !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  z-index: 3 !important;
+  font-size: 10px !important;
+  font-weight: 600 !important;
+  white-space: nowrap !important;
+  color: #fff !important;
+  text-shadow: 0 1px 3px #000, 0 0 6px rgba(0,0,0,.8) !important;
+  pointer-events: none !important;
+}
+#playersLayer .pt .tn-pos {
+  opacity: 0.85;
+  margin-right: 3px;
+  font-weight: 700;
+}
+
+/* ═══ VIEW ISOLATION: board never leaks onto other pages ═══ */
+.view:not(.on) {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+#v-board.view:not(.on),
+#v-board.view-board:not(.on) {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  position: absolute !important;
+  left: -9999px !important;
+  width: 0 !important;
+  height: 0 !important;
+  overflow: hidden !important;
+  z-index: -1 !important;
+}
+/* present-mode only when board is active */
+.present-mode #v-board:not(.on) {
+  display: none !important;
+  position: static !important;
+  inset: auto !important;
+  z-index: auto !important;
 }
