@@ -1353,20 +1353,21 @@ const BoardEngine = {
   tokenMetrics() {
     const c = document.getElementById('fieldContainer');
     const h = (c && c.clientHeight) || 600;
-    // Фішки гравців — комфортний розмір (~2.2% висоти поля)
-    const player = Math.max(16, Math.min(36, h * 0.022));
-    const ball = Math.max(7, Math.min(14, player * 0.36));
-    // Інвентар — свідомо менший за фішку гравця (не більше ~55%)
-    const cone = Math.max(6, Math.min(14, player * 0.38));
-    const equip = Math.max(6, Math.min(14, player * 0.42));
-    const chip = Math.max(5, Math.min(11, player * 0.32));      // мала фішка
-    const chipLg = Math.max(7, Math.min(14, player * 0.42));     // велика фішка інвентарю
-    const mark = Math.max(4, Math.min(8, player * 0.22));        // точка
-    const markSq = Math.max(6, Math.min(12, player * 0.36));     // квадрат розмітки
+    // Гравець ~вдвічі більший за попередній масштаб
+    const player = Math.max(28, Math.min(56, h * 0.044));
+    const ball = Math.max(9, Math.min(18, player * 0.32));
+    // Інвентар ~вдвічі менший (відносно фішки гравця ~18–22%)
+    const cone = Math.max(4, Math.min(10, player * 0.18));
+    const equip = Math.max(4, Math.min(10, player * 0.20));
+    const chip = Math.max(4, Math.min(8, player * 0.15));
+    const chipLg = Math.max(5, Math.min(10, player * 0.20));
+    const mark = Math.max(3, Math.min(6, player * 0.11));
+    const markSq = Math.max(4, Math.min(9, player * 0.16));
     return {
       player, ball, cone, equip, chip, chipLg, mark, markSq,
-      font: Math.max(8, Math.min(13, player * 0.34)),
-      ringPad: Math.max(6, Math.round(player * 0.28)) // запас для індикатора навколо
+      font: Math.max(11, Math.min(18, player * 0.36)),
+      // Шкала навколо фішки — приблизно вдвічі більша за радіус фішки
+      ringPad: Math.max(14, Math.round(player * 0.55))
     };
   },
 
@@ -1718,15 +1719,16 @@ const BoardEngine = {
       // readiness — зовнішнє кільце; load (0-10) — товщина/інтенсивність другого кільця
       const loadPct = loadNum != null && !isNaN(loadNum) ? Math.max(0, Math.min(10, loadNum)) / 10 : 0;
       const loadCol = loadPct >= 0.7 ? '#e74c3c' : loadPct >= 0.4 ? '#f1c40f' : '#3498db';
-      const ringShadow = `box-shadow:0 2px 6px rgba(0,0,0,.4)`;
-      // SVG load arc (чіткий індикатор навколо фішки)
-      const ringSz = m.player + (m.ringPad || 8) * 2;
+      // Без білої обводки — лише кольорова шкала показника (вдвічі більша за фішку)
+      const ringShadow = `box-shadow:0 3px 8px rgba(0,0,0,.45);border:none !important`;
+      const ringSz = Math.round(m.player + (m.ringPad || 14) * 2);
+      const circ = 2 * Math.PI * 18; // r=18 у viewBox 48
       const loadArc = (loadNum != null && !isNaN(loadNum))
-        ? `<svg class="pt-load-ring" viewBox="0 0 40 40" aria-hidden="true" style="width:${ringSz}px;height:${ringSz}px"><circle cx="20" cy="20" r="17" fill="none" stroke="rgba(0,0,0,0.3)" stroke-width="3.5"/><circle cx="20" cy="20" r="17" fill="none" stroke="${loadCol}" stroke-width="3.5" stroke-dasharray="${loadPct * 106.8} 106.8" stroke-linecap="round" transform="rotate(-90 20 20)"/></svg>`
-        : `<svg class="pt-load-ring" viewBox="0 0 40 40" aria-hidden="true" style="width:${ringSz}px;height:${ringSz}px"><circle cx="20" cy="20" r="17" fill="none" stroke="rgba(0,0,0,0.25)" stroke-width="3.5"/><circle cx="20" cy="20" r="17" fill="none" stroke="${ringColor}" stroke-width="3.5" stroke-dasharray="${(readiness/100)*106.8} 106.8" stroke-linecap="round" transform="rotate(-90 20 20)"/></svg>`;
+        ? `<svg class="pt-load-ring" viewBox="0 0 48 48" aria-hidden="true" style="width:${ringSz}px;height:${ringSz}px"><circle cx="24" cy="24" r="18" fill="none" stroke="rgba(0,0,0,0.35)" stroke-width="5"/><circle cx="24" cy="24" r="18" fill="none" stroke="${loadCol}" stroke-width="5" stroke-dasharray="${loadPct * circ} ${circ}" stroke-linecap="round" transform="rotate(-90 24 24)"/></svg>`
+        : `<svg class="pt-load-ring" viewBox="0 0 48 48" aria-hidden="true" style="width:${ringSz}px;height:${ringSz}px"><circle cx="24" cy="24" r="18" fill="none" stroke="rgba(0,0,0,0.3)" stroke-width="5"/><circle cx="24" cy="24" r="18" fill="none" stroke="${ringColor}" stroke-width="5" stroke-dasharray="${(readiness/100)*circ} ${circ}" stroke-linecap="round" transform="rotate(-90 24 24)"/></svg>`;
       // Колір фішки: явний chipColor / fill / color, інакше CSS-клас own/opp/gk
       const customBg = o.chipColor || o.fill || (o.team === 'own' || o.team === 'opp' ? o.color : null);
-      const bgStyle = customBg ? `background:${customBg} !important;border-color:rgba(255,255,255,.55);` : '';
+      const bgStyle = customBg ? `background:${customBg} !important;border:none !important;` : 'border:none !important;';
       html += `<div class="${cls}${extraCls}" data-id="${o.id}" data-r="${rPx}"${readyAttr} style="left:${pct.left}%;top:${pct.top}%;width:${m.player}px;height:${m.player}px;font-size:${m.font}px;--pt-r:${rPx}px;${ringShadow};${bgStyle}" title="${sanitize(titleName + titleExtra)}">${loadArc}${statusBadge}<span class="pt-num">${o.number || ''}</span>${label}</div>`;
     });
     layer.innerHTML = html;

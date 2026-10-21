@@ -3924,13 +3924,13 @@ body.board-only-mode #boardToolbarBottom.btb-bottom {
   z-index: 8 !important;
 }
 #playersLayer .eq {
-  max-width: 16px !important;
-  max-height: 16px !important;
+  max-width: 10px !important;
+  max-height: 10px !important;
 }
 #playersLayer .eq.chip-lg,
 #playersLayer .eq.mark-sq {
-  max-width: 18px !important;
-  max-height: 18px !important;
+  max-width: 12px !important;
+  max-height: 12px !important;
 }
 #playersLayer .eq.wall,
 #playersLayer .eq.mannequin {
@@ -4058,4 +4058,27 @@ body.role-player .mni[data-view="board"] { display: none !important; }
 @media (max-width: 480px) {
   .fifa-stats { grid-template-columns: repeat(3, 1fr); }
   .fifa-avatar { width: 56px; height: 56px; }
+}
+
+/* Фішка гравця: без білої лінії, велика шкала показника */
+#playersLayer .pt {
+  border: none !important;
+  outline: none !important;
+  overflow: visible !important;
+}
+#playersLayer .pt-load-ring,
+#playersLayer .pt-ring {
+  position: absolute !important;
+  left: 50% !important;
+  top: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  pointer-events: none !important;
+  z-index: 0 !important;
+  overflow: visible !important;
+}
+#playersLayer .pt .pt-num,
+#playersLayer .pt .pt-label,
+#playersLayer .pt .pt-status-badge {
+  position: relative;
+  z-index: 2;
 }
