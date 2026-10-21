@@ -3,11 +3,48 @@ const Views = {
   dashboard() {
     try {
       if (typeof AuthManager !== 'undefined') {
-        if (AuthManager.isPlayer()) return this._playerHome();
-        if (AuthManager.isGuest()) return this._guestHome();
+        try { AuthManager._resolveRole(); AuthManager._applyUiRole(); } catch (_) {}
+        if (AuthManager.isPlayer()) {
+          try {
+            return this._playerHome();
+          } catch (err) {
+            console.error('[Views._playerHome]', err);
+            return this._playerHomeFallback(err);
+          }
+        }
+        if (AuthManager.isGuest()) {
+          try { return this._guestHome(); } catch (e2) {
+            console.error('[Views._guestHome]', e2);
+          }
+        }
+        // тренер
+        if (AuthManager.isCoach()) return this._coachHome();
+      }
+    } catch (e) {
+      console.error('[Views.dashboard]', e);
+    }
+    // якщо Auth каже player, ніколи не показуємо тренерську головну
+    try {
+      if (typeof AuthManager !== 'undefined' && AuthManager.isPlayer()) {
+        return this._playerHomeFallback();
       }
     } catch (_) {}
     return this._coachHome();
+  },
+
+  _playerHomeFallback(err) {
+    const msg = err && (err.message || String(err)) ? String(err.message || err) : '';
+    let me = null;
+    try { me = AuthManager.getLinkedPlayer && AuthManager.getLinkedPlayer(); } catch (_) {}
+    return `
+      <div class="st">Команда · МЕТАЛІСТ ШТУТГАРТ</div>
+      ${me ? this._fifaCard(me, {}) : this._noPlayerLink()}
+      <div class="card glass">
+        <div class="ct">Режим гравця</div>
+        <p class="note-sm">Картка та порівняння тимчасово обмежені.${msg ? ' (' + sanitize(msg) + ')' : ''}</p>
+        <p class="note-sm">Попросіть тренера перевірити Telegram-нік у вашій анкеті та зробіть Імпорт JSON.</p>
+        <button type="button" class="btn btn-s btn-sm" data-io="import" data-action="import-trigger">Імпорт JSON</button>
+      </div>`;
   },
 
   _coachHome() {
@@ -230,18 +267,32 @@ const Views = {
   },
 
   _playerStats(playerId) {
-    const s = Store.get();
-    return {
-      attPct: LoadModel.attendanceRate(s.trainings, playerId),
-      avgRpe: LoadModel.avgPlayerRpe(s.trainings, playerId),
-      load28: LoadModel.playerLoad(s.trainings, playerId, 28)
-    };
+    try {
+      const s = Store.get();
+      const LM = (typeof LoadModel !== 'undefined') ? LoadModel : null;
+      return {
+        attPct: LM && LM.attendanceRate ? LM.attendanceRate(s.trainings, playerId) : 0,
+        avgRpe: LM && LM.avgPlayerRpe ? LM.avgPlayerRpe(s.trainings, playerId) : 0,
+        load28: LM && LM.playerLoad ? LM.playerLoad(s.trainings, playerId, 28) : 0
+      };
+    } catch (e) {
+      console.warn('[playerStats]', e);
+      return { attPct: 0, avgRpe: 0, load28: 0 };
+    }
   },
 
   _playerHome() {
     const s = Store.get();
-    const me = AuthManager.getLinkedPlayer();
-    const stats = me ? this._playerStats(me.id) : {};
+    let me = null;
+    try { me = AuthManager.getLinkedPlayer(); } catch (_) { me = null; }
+    // якщо роль player, але link втрачено — спробувати знайти ще раз
+    if (!me && AuthManager.user) {
+      try {
+        AuthManager._resolveRole();
+        me = AuthManager.getLinkedPlayer();
+      } catch (_) {}
+    }
+    const stats = me ? this._playerStats(me.id) : { attPct: 0, avgRpe: 0, load28: 0 };
     const next = s.trainings.filter(t => t.status === 'planned' && t.date >= today()).sort((a, b) => a.date.localeCompare(b.date))[0];
     const nextMatch = s.matches.filter(m => m.date >= today()).sort((a, b) => a.date.localeCompare(b.date))[0];
     const teamAvail = s.players.filter(p => p.status === 'available' || p.status === 'healthy' || !p.status).length;

@@ -11,6 +11,7 @@ const App = {
     this.bindEvents();
     try { /* плаваюча навігація вимкнена — статичний сайдбар справа */ } catch (e) { console.warn('nav', e); }
     try { if (typeof AuthManager !== 'undefined') AuthManager.init(); } catch (e) { console.warn('Auth', e); }
+    try { if (typeof AuthManager !== 'undefined') { AuthManager._resolveRole(); AuthManager._applyUiRole(); } } catch (_) {}
     try { BoardEngine.init(); } catch (e) { console.warn('board', e); }
     const view = (Store.get().ui && Store.get().ui.view) || 'dashboard';
     if (view === 'board') this.allowBoardOnce('logo');

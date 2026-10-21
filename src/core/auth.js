@@ -113,24 +113,45 @@ const AuthManager = {
       return;
     }
 
-    // Гравець: link з rbac або збіг telegramUsername у складі
+    // Гравець: link з rbac / telegramUsername / telegramId / ім'я
     let link =
       playerLinks[idStr] ||
       playerLinks[unameAt] ||
       playerLinks[uname] ||
       null;
 
-    if (!link && s && uname) {
-      const pl = (s.players || []).find(p =>
-        (p.telegramUsername || '').replace(/^@/, '').toLowerCase() === uname ||
-        String(p.telegramId || '') === idStr
-      );
+    if (!link && s) {
+      const players = s.players || [];
+      // 1) telegramId
+      let pl = players.find(p => p.telegramId && String(p.telegramId) === idStr);
+      // 2) username
+      if (!pl && uname) {
+        pl = players.find(p =>
+          (p.telegramUsername || '').replace(/^@/, '').toLowerCase() === uname
+        );
+      }
+      // 3) first_name (унікальний збіг) — для акаунтів без @username
+      if (!pl && this.user.first_name) {
+        const fn = String(this.user.first_name).trim().toLowerCase();
+        const hits = players.filter(p =>
+          String(p.firstName || '').trim().toLowerCase() === fn ||
+          String(p.lastName || '').trim().toLowerCase() === fn
+        );
+        if (hits.length === 1) pl = hits[0];
+      }
       if (pl) link = pl.id;
     }
 
     if (link) {
       this.role = 'player';
       this.linkedPlayerId = link;
+      // підтягнути photo_url з Telegram у картку
+      try {
+        const pl = (s.players || []).find(p => p.id === link);
+        if (pl && this.user && this.user.photo_url) {
+          pl.telegramPhotoUrl = this.user.photo_url;
+        }
+      } catch (_) {}
       return;
     }
 
