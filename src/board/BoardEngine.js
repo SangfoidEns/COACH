@@ -548,7 +548,8 @@ const BoardEngine = {
       }
       this.dragObj = null;
       this.activePointerId = null;
-      this.pushHistory();
+      this.pushHistory(); try { StorageManager.save(); } catch (_) {}
+    //;
       return;
     }
 
@@ -1392,6 +1393,7 @@ const BoardEngine = {
     s.activeBoard.selectedId = objId;
     this.pendingFromBenchId = null;
     this.pushHistory();
+    try { StorageManager.save(); } catch (_) {}
     this.render();
     try { TelegramManager.haptic('medium'); } catch (_) {}
     try { Toast.show('#' + (obj.number || '') + ' ' + (obj.label || '') + ' на полі', 'ok'); } catch (_) {}
@@ -1408,6 +1410,7 @@ const BoardEngine = {
     obj.y = 0;
     if (s.activeBoard.selectedId === objId) s.activeBoard.selectedId = null;
     this.pushHistory();
+    try { StorageManager.save(); } catch (_) {}
     this.render();
     try { TelegramManager.haptic('light'); } catch (_) {}
     try { Toast.show('#' + (obj.number || '') + ' на лавці', 'ok'); } catch (_) {}

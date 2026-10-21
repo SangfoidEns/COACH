@@ -348,6 +348,9 @@ const App = {
 
   /** Перетягування панелі інструментів дошки (не малює на canvas) */
   applyToolbarDefaultPos(tb) {
+    if (!tb) return;
+    // Docked top/bottom — не чіпаємо inline position
+    if (tb.id === 'boardToolbarTop' || tb.id === 'boardToolbarBottom' || tb.classList.contains('btb-top') || tb.classList.contains('btb-bottom')) return;
     tb.style.left = '50%';
     tb.style.top = 'auto';
     tb.style.right = 'auto';
@@ -369,6 +372,8 @@ const App = {
   },
 
   restoreToolbarPos(tb) {
+    if (!tb) return;
+    if (tb.id === 'boardToolbarTop' || tb.id === 'boardToolbarBottom') return;
     try {
       if (localStorage.getItem('ms_btb_locked') === '1') tb.classList.add('btb-locked');
       const raw = localStorage.getItem('ms_btb_pos');
@@ -401,7 +406,9 @@ const App = {
   },
 
   initBoardToolbarDrag() {
-    const tb = document.(document.getElementById('boardToolbarTop')||document.getElementById('boardToolbar'));
+    // Docked top/bottom bars — без плаваючого drag
+    if (document.getElementById('boardToolbarTop') || document.getElementById('boardToolbarBottom')) return;
+    const tb = document.getElementById('boardToolbar');
     if (!tb) return;
     // Після renderToolbar innerHTML зникає — відновлюємо хендл і позицію
     let handle = tb.querySelector('.btb-drag-handle');
@@ -757,7 +764,7 @@ const App = {
       if (action === 'toggle-tools') return App.toggleTools();
       if (action === 'show-all-panels') return App.showAllPanels();
       if (action === 'toggle-toolbar-collapse') {
-        const tb = document.(document.getElementById('boardToolbarTop')||document.getElementById('boardToolbar'));
+        const tb = (document.getElementById('boardToolbarTop') || document.getElementById('boardToolbarBottom') || document.getElementById('boardToolbar'));
         if (tb) {
           tb.classList.toggle('btb-collapsed');
           localStorage.setItem('ms_btb_collapsed', tb.classList.contains('btb-collapsed') ? '1' : '0');
@@ -766,7 +773,7 @@ const App = {
         return;
       }
       if (action === 'lock-toolbar') {
-        const tb = document.(document.getElementById('boardToolbarTop')||document.getElementById('boardToolbar'));
+        const tb = (document.getElementById('boardToolbarTop') || document.getElementById('boardToolbarBottom') || document.getElementById('boardToolbar'));
         if (tb) {
           tb.classList.toggle('btb-locked');
           const locked = tb.classList.contains('btb-locked');
@@ -800,6 +807,7 @@ const App = {
           }
         }
         try { BoardEngine.render(); BoardEngine.renderToolbar(); } catch (_) {}
+        try { StorageManager.save(); } catch (_) {}
         Toast.show(sel ? 'Колір на виділене' : 'Колір задано — тепер додавайте фішки / схему', 'ok');
         return;
       }

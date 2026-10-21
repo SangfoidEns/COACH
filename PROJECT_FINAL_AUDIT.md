@@ -1,47 +1,45 @@
-# PROJECT FINAL AUDIT — METALIST STUTTGART Coaching Platform
+# METALIST STUTTGART — Health Check (2026-10-21)
 
-## Architecture
-- Framework: Vanilla JS (classic scripts, ordered load)
-- Build: `npm run build` → `dist/`
-- State: `Store` (src/core/store.js)
-- Storage: localStorage + migration (src/core/storage.js)
-- Board: SVG BoardEngine (src/board/BoardEngine.js)
-- Telegram: src/telegram/TelegramManager.js
+## Syntax
+All modules: OK (node --check)
 
-## Modules
-| Path | Role |
-|------|------|
-| src/core/utils.js | uid, clamp, sanitize, ErrorManager, schema keys |
-| src/core/store.js | App state |
-| src/core/storage.js | persist/load/export/import |
-| src/core/modal.js | Modal system |
-| src/core/toast.js | Toasts |
-| src/core/loadModel.js | RPE load model |
-| src/board/BoardEngine.js | Tactical board |
-| src/board/TimerEngine.js | Session timers |
-| src/data/demo.js | Demo players/exercises |
-| src/data/schemes.js | Formations + BACK3 |
-| src/ui/views.js | All page views |
-| src/ui/app.js | Navigation, events |
-| src/ui/actions.js | CRUD actions + boot |
-| src/ui/ai.js | AI demo helpers |
-| src/telegram/TelegramManager.js | Mini App |
-| src/styles/app.css | Full UI CSS |
+## Critical fixes this pass
+1. **App is not defined** — broken `document.(...)` in app.js → fixed
+2. **isCaptain / status lost on load** — normalizePlayer/normalizeBoardObj now preserve fields
+3. **Toolbar docked** — top chrome + bottom tools; no overlay on grass
+4. **Null-safe toolbar pos** — docked bars skipped for floating drag logic
+5. **Bench promote/demote** — persist via StorageManager.save
+6. **Color palette** — persists drawColor + selected object color
 
-## Features
-Dashboard, Board, Trainings, Exercises, My Exercises, 3-Defenders, Tactics, Players, Calendar, Diary, Matches, Analytics, Settings, Timer, Fullscreen, Telegram, Export/Import, Anim→Training
+## Integration map
+```
+TelegramManager → AuthManager → StorageManager → Store
+                                      ↓
+                              App.init / navigate
+                                      ↓
+                    ┌─────────────────┴─────────────────┐
+                    Views (UI)                    BoardEngine
+                    Actions (CRUD)                TimerEngine
+```
 
-## Data model
-Team settings, Player, Training, Exercise, MyExercise, Animation (by id), DiaryEntry, Match, CalendarEvent, activeBoard, boards
+## Board open rule
+ONLY logo (`open-default-board`) or explicit preset/scheme load.
 
-## Deployment
-.github/workflows/deploy.yml → GitHub Pages
+## Data integrity
+- localStorage + Telegram CloudStorage
+- schema normalize keeps isCaptain, status, onBench, chipColor
 
-## Known limitations
-- Video analysis / player radar charts: UI hooks partial (extend in next iteration)
-- Classic scripts (not ES modules) chosen deliberately to preserve monolith logic without rewrite risk
-- Vite present historically; production path is static copy
+## Known soft limitations
+- GIF export depends on GifEncoder availability
+- CloudStorage size limits (chunking if implemented in storage.js)
+- Floating toolbar drag disabled when docked top/bottom (by design)
 
-## Tests
-- tests/math.test.js (utils)
-- Manual regression: board drag, views, storage
+## Regression checklist
+- [ ] App boots without error screen
+- [ ] Logo → board
+- [ ] Scheme places 11 + bench
+- [ ] Captain / injury persist after reload
+- [ ] Drag bench ↔ field
+- [ ] Color palette → new chips
+- [ ] Undo/redo
+- [ ] JSON import/export isolated (no board jump)

@@ -3828,3 +3828,22 @@ body.board-only-mode #boardToolbarBottom.btb-bottom {
   max-width: none !important;
   border-radius: 0 !important;
 }
+
+/* Палітра на нижній панелі */
+#boardToolbarBottom .color-swatch,
+.btb-bottom .color-swatch {
+  min-width: 28px !important;
+  min-height: 28px !important;
+  width: 28px !important;
+  height: 28px !important;
+  border-radius: 50% !important;
+  border: 2px solid rgba(255,255,255,0.25) !important;
+  padding: 0 !important;
+}
+#boardToolbarBottom .color-swatch.on,
+.btb-bottom .color-swatch.on {
+  border-color: #d5ff3f !important;
+  box-shadow: 0 0 0 2px rgba(213,255,63,0.35);
+}
+.palette-swatches { display: none; gap: 4px; align-items: center; }
+.palette-swatches.open { display: inline-flex !important; }
