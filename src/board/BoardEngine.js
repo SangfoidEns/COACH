@@ -1,6 +1,9 @@
 /** Extracted module: src/board/BoardEngine.js lines 599-1437 — DO NOT rewrite business logic */
 /* ─── BOARD ENGINE ──────────────────────────────────────── */
 const BoardEngine = {
+  /** Колір воротаря — завжди окремий, не з палітри */
+  GK_CHIP_COLOR: '#f1c40f',
+
   /* ── Pointer / Drag state ── */
   drawing: false,
   startPos: null,
@@ -340,6 +343,35 @@ const BoardEngine = {
     // document.fullscreenElement і Telegram fullscreen лишаються як були
   },
 
+
+  /** Стрілки/паси/рухи — hit-test (світ 0..1) */
+  PATH_TYPES: ['arrow', 'arrowDash', 'pass', 'run', 'dribble', 'press', 'shot'],
+  hitTestArrow(wx, wy, tol) {
+    tol = tol == null ? 0.028 : tol;
+    const s = Store.get();
+    let best = null, bestD = tol;
+    (s.activeBoard.objects || []).forEach(o => {
+      if (!this.PATH_TYPES.includes(o.type) || o.x2 == null) return;
+      // відстань від точки до відрізка
+      const x1 = o.x, y1 = o.y, x2 = o.x2, y2 = o.y2;
+      const dx = x2 - x1, dy = y2 - y1;
+      const len2 = dx * dx + dy * dy || 1e-8;
+      let t = ((wx - x1) * dx + (wy - y1) * dy) / len2;
+      t = Math.max(0, Math.min(1, t));
+      const px = x1 + t * dx, py = y1 + t * dy;
+      const d = Math.hypot(wx - px, wy - py);
+      if (d < bestD) { bestD = d; best = { obj: o, t, d }; }
+    });
+    return best;
+  },
+  hitTestArrowHandle(wx, wy, o, tol) {
+    tol = tol == null ? 0.035 : tol;
+    if (!o || o.x2 == null) return null;
+    if (Math.hypot(wx - o.x, wy - o.y) < tol) return 'start';
+    if (Math.hypot(wx - o.x2, wy - o.y2) < tol) return 'end';
+    return null;
+  },
+
   /* ── POINTER DOWN ── */
   onPointerDown(e) {
     // Ignore secondary buttons except middle for pan
@@ -496,10 +528,28 @@ const BoardEngine = {
       return;
     }
 
-    // Select empty space → deselect
+    // Select: спочатку стрілки (переміщення / кінці), інакше зняти вибір
     if (tool === 'select') {
+      const hit = this.hitTestArrow(world.x, world.y);
+      if (hit && hit.obj) {
+        const handle = this.hitTestArrowHandle(world.x, world.y, hit.obj);
+        s.activeBoard.selectedId = hit.obj.id;
+        this.dragObj = hit.obj;
+        this._arrowEdit = handle || 'move';
+        this._arrowGrab = { x: world.x, y: world.y, ox: hit.obj.x, oy: hit.obj.y, ox2: hit.obj.x2, oy2: hit.obj.y2 };
+        this.activePointerId = e.pointerId;
+        try {
+          const c = document.getElementById('fieldContainer');
+          c.setPointerCapture(e.pointerId);
+        } catch (_) {}
+        this.renderTokens();
+        this.renderDrawings();
+        return;
+      }
       s.activeBoard.selectedId = null;
+      this._arrowEdit = null;
       this.renderTokens();
+      this.renderDrawings();
     }
   },
 
@@ -560,10 +610,30 @@ const BoardEngine = {
     /* ── DRAG: player follows finger continuously ── */
     if (this.dragObj && (this.activePointerId === null || this.activePointerId === e.pointerId)) {
       const world = this.screenToWorld(e.clientX, e.clientY);
+      // Редагування стрілки: переміщення / кінці (довжина + кут)
+      if (this._arrowEdit && this.PATH_TYPES.includes(this.dragObj.type) && this.dragObj.x2 != null) {
+        const g = this._arrowGrab || {};
+        if (this._arrowEdit === 'start') {
+          const p = this.clampWorld(world.x, world.y);
+          this.dragObj.x = p.x; this.dragObj.y = p.y;
+        } else if (this._arrowEdit === 'end') {
+          const p = this.clampWorld(world.x, world.y);
+          this.dragObj.x2 = p.x; this.dragObj.y2 = p.y;
+        } else {
+          // move whole arrow
+          const dx = world.x - (g.x || world.x);
+          const dy = world.y - (g.y || world.y);
+          const p1 = this.clampWorld((g.ox || 0) + dx, (g.oy || 0) + dy);
+          const p2 = this.clampWorld((g.ox2 || 0) + dx, (g.oy2 || 0) + dy);
+          this.dragObj.x = p1.x; this.dragObj.y = p1.y;
+          this.dragObj.x2 = p2.x; this.dragObj.y2 = p2.y;
+        }
+        this.renderDrawings();
+        return;
+      }
       const pos = this.clampWorld(world.x - this.dragOffset.x, world.y - this.dragOffset.y);
       this.dragObj.x = pos.x;
       this.dragObj.y = pos.y;
-      // ONLY update token positions — no history, no storage, no other views
       this._updateTokenDOM(this.dragObj);
       return;
     }
@@ -604,6 +674,13 @@ const BoardEngine = {
     // Commit drag
     if (this.dragObj) {
       const dragged = this.dragObj;
+      const wasArrow = this._arrowEdit && this.PATH_TYPES.includes(dragged.type);
+      if (wasArrow) {
+        this._arrowEdit = null;
+        this._arrowGrab = null;
+        this.pushHistory();
+        this.renderDrawings();
+      }
       const el = document.querySelector('[data-id="' + dragged.id + '"]');
       if (el) {
         el.classList.remove('dragging');
@@ -828,17 +905,25 @@ const BoardEngine = {
     if (!p) return;
     const pos = this.clampWorld(x, y);
     const readiness = p.readiness != null ? p.readiness : (p.condition != null ? p.condition : 80);
-    const chipColor = s.activeBoard.drawColor || null;
+    const isGk = String(p.position || '').toUpperCase() === 'GK';
+    // Воротар: жовтий завжди; інші — з палітри (якщо обрана)
+    const chipColor = isGk ? this.GK_CHIP_COLOR : (s.activeBoard.drawColor || null);
+    // Якщо ставлять воротаря «в напад» (верх поля) — м'яко підтягнути до зони воріт
+    let wx = pos.x, wy = pos.y;
+    if (isGk && wy < 0.75) {
+      wy = 0.92;
+      wx = 0.5;
+    }
     s.activeBoard.objects.push({
       id: uid(), type: 'player',
-      x: pos.x, y: pos.y,
+      x: wx, y: wy,
       number: p.number,
       label: p.lastName || '',
       team: 'own',
       playerId: p.id,
       readiness,
       load: p.load != null ? p.load : 0,
-      position: p.position || null,
+      position: p.position || (isGk ? 'GK' : null),
       status: p.status || null,
       isCaptain: !!p.isCaptain,
       chipColor: chipColor || undefined,
@@ -886,11 +971,40 @@ const BoardEngine = {
     const isRehab = (pl) => pl && (pl.status === 'rehab' || pl.status === 'recovery');
     const isRes = (pl) => pl && pl.group === 'reserve';
     const fieldPool = rosterAll.filter(pl => !isRes(pl) && !isInj(pl) && !isRehab(pl));
+    const roleOf = (pl) => {
+      const pos = String((pl && pl.position) || '').toUpperCase();
+      if (pos === 'GK') return 'GK';
+      if (['CB','LB','RB','LCB','RCB','LWB','RWB','WB','DEF'].includes(pos)) return 'DEF';
+      if (['CM','CDM','CAM','LM','RM','DM','AM','MID'].includes(pos)) return 'MID';
+      if (['ST','CF','LW','RW','SS','ATT'].includes(pos)) return 'ATT';
+      return 'MID';
+    };
+    const slotRole = (x, y) => {
+      if (y >= 0.88) return 'GK';
+      if (y >= 0.68) return 'DEF';
+      if (y >= 0.38) return 'MID';
+      return 'ATT';
+    };
+    const pickRoster = (num, role) => {
+      // 1) номер + роль
+      let r = fieldPool.find(pl => pl.number === num && roleOf(pl) === role && !usedIds.has(pl.id));
+      if (r) return r;
+      // 2) роль
+      r = fieldPool.find(pl => roleOf(pl) === role && !usedIds.has(pl.id));
+      if (r) return r;
+      // 3) номер
+      r = fieldPool.find(pl => pl.number === num && !usedIds.has(pl.id));
+      if (r) return r;
+      // 4) будь-хто
+      return fieldPool.find(pl => !usedIds.has(pl.id)) || null;
+    };
     scheme.slice(0, 11).forEach(([num, x, y]) => {
       const p = this.clampWorld(x, y);
-      let roster = fieldPool.find(pl => pl.number === num && !usedIds.has(pl.id));
-      if (!roster) roster = fieldPool.find(pl => !usedIds.has(pl.id));
+      const role = slotRole(p.x, p.y);
+      const roster = pickRoster(num, role);
       if (roster) usedIds.add(roster.id);
+      const isGk = role === 'GK' || (roster && roleOf(roster) === 'GK');
+      const col = isGk ? this.GK_CHIP_COLOR : (chipColor || undefined);
       s.activeBoard.objects.push({
         id: uid(), type: 'player', x: p.x, y: p.y,
         number: roster ? roster.number : num,
@@ -899,11 +1013,11 @@ const BoardEngine = {
         playerId: roster ? roster.id : null,
         readiness: roster ? (roster.readiness != null ? roster.readiness : roster.condition) : 80,
         load: roster && roster.load != null ? roster.load : 0,
-        position: roster ? roster.position : null,
+        position: roster ? roster.position : (isGk ? 'GK' : null),
         status: roster ? roster.status : null,
         isCaptain: roster ? !!roster.isCaptain : false,
-        chipColor: chipColor || undefined,
-        color: chipColor || undefined,
+        chipColor: col,
+        color: col,
         onBench: false,
         rotation: 0, locked: false, visible: true
       });
@@ -1353,24 +1467,23 @@ const BoardEngine = {
 
   /** Розмір фішки відносно видимої висоти поля (розмітка ~105м, гравець ~1.7%) */
   tokenMetrics() {
-    const c = document.getElementById('fieldContainer');
-    const h = (c && c.clientHeight) || 600;
-    // Як на лавці: компактна кругла фішка + щільне кільце
-    const player = Math.max(30, Math.min(42, h * 0.036));
-    const ball = Math.max(10, Math.min(16, player * 0.36));
-    const inv = Math.max(10, Math.min(16, player * 0.34));
-    const cone = Math.max(10, inv * 1.05);
+    // Базовий розмір = як аватар на лавці (28px). Zoom/pan — через CSS transform #fieldStage,
+    // тому фішки масштабуються разом із полем, позиції лишаються у 0..1.
+    const BENCH_AVATAR = 28;
+    const player = BENCH_AVATAR;
+    const ball = Math.round(player * 0.42);
+    const inv = Math.round(player * 0.36);
+    const cone = Math.round(inv * 1.05);
     const equip = inv;
-    const chip = Math.max(9, inv * 0.95);
-    const chipLg = Math.max(11, inv * 1.15);
-    const mark = Math.max(6, inv * 0.5);
-    const markSq = Math.max(9, inv * 0.9);
-    const goal = Math.max(28, Math.min(48, player * 0.9));
+    const chip = Math.round(inv * 0.95);
+    const chipLg = Math.round(inv * 1.15);
+    const mark = Math.round(inv * 0.55);
+    const markSq = Math.round(inv * 0.95);
+    const goal = Math.round(player * 1.35);
     return {
       player, ball, cone, equip, chip, chipLg, mark, markSq, inv, goal,
-      font: Math.max(11, Math.min(15, player * 0.38)),
-      // Кільце як на лавці: ~1.35× діаметра фішки
-      ringPad: Math.max(5, Math.round(player * 0.175))
+      font: 11,
+      ringPad: 5
     };
   },
 
@@ -1693,10 +1806,19 @@ const BoardEngine = {
       }
 
       
-      const isGk = o.number === 1 || (o.team === 'own' && (() => {
-        const pl = Store.get().players.find(p => p.id === o.playerId);
-        return pl && pl.position === 'GK';
-      })());
+      const isGk = (() => {
+        if (String(o.position || '').toUpperCase() === 'GK') return true;
+        if (o.playerId) {
+          const pl = Store.get().players.find(p => p.id === o.playerId);
+          if (pl && String(pl.position || '').toUpperCase() === 'GK') return true;
+        }
+        return false;
+      })();
+      // Воротар ніколи не бере колір з палітри
+      if (isGk) {
+        o.chipColor = this.GK_CHIP_COLOR;
+        o.color = this.GK_CHIP_COLOR;
+      }
       const cls = 'pt ' + (o.team === 'opp' ? 'opp' : (isGk ? 'gk' : 'own')) + (sel === o.id ? ' sel' : '');
       let readiness = o.readiness;
       let loadVal = o.load;
@@ -1821,15 +1943,24 @@ const BoardEngine = {
       if (['arrow', 'arrowDash', 'pass', 'run', 'dribble', 'press', 'shot'].includes(o.type) && o.x2 != null) {
         // o.color завжди пріоритетний (палітра); інакше дефолт типу
         let col = o.color || this.strokeColorFor(o.type) || '#f1c40f';
-        let dash = '', sw = 3;
+        let dash = '';
+        let sw = o.strokeW != null ? o.strokeW : (o.type === 'shot' ? 4 : 3);
         if (o.type === 'run' || o.type === 'arrowDash') dash = 'stroke-dasharray="10,6"';
         if (o.type === 'dribble') dash = 'stroke-dasharray="4,4"';
-        if (o.type === 'shot') sw = 4;
+        const selected = s.activeBoard.selectedId === o.id;
+        if (selected) sw = Math.max(sw, 3.5);
         const mkId = 'mk_' + String(col).replace(/[^a-zA-Z0-9]/g, '');
         if (!html.includes('id="' + mkId + '"')) {
           html += `<marker id="${mkId}" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="${col}"/></marker>`;
         }
+        html += `<line x1="${tx(o.x)}" y1="${ty(o.y)}" x2="${tx(o.x2)}" y2="${ty(o.y2)}" stroke="transparent" stroke-width="${sw + 14}"/>`;
         html += `<line x1="${tx(o.x)}" y1="${ty(o.y)}" x2="${tx(o.x2)}" y2="${ty(o.y2)}" stroke="${col}" stroke-width="${sw}" marker-end="url(#${mkId})" ${dash}/>`;
+        if (selected) {
+          html += `<circle cx="${tx(o.x)}" cy="${ty(o.y)}" r="9" fill="#fff" stroke="#1a73e8" stroke-width="2.5"/>`;
+          html += `<circle cx="${tx(o.x2)}" cy="${ty(o.y2)}" r="9" fill="#1a73e8" stroke="#fff" stroke-width="2.5"/>`;
+          const mx0 = (tx(o.x) + tx(o.x2)) / 2, my0 = (ty(o.y) + ty(o.y2)) / 2;
+          html += `<circle cx="${mx0}" cy="${my0}" r="7" fill="#d5ff3f" stroke="#111" stroke-width="1.5"/>`;
+        }
         if (o.step != null) {
           const mx = (tx(o.x) + tx(o.x2)) / 2, my = (ty(o.y) + ty(o.y2)) / 2;
           html += `<circle cx="${mx}" cy="${my}" r="11" fill="rgba(13,17,23,0.85)" stroke="${col}" stroke-width="1.5"/>`;
@@ -2114,6 +2245,7 @@ const BoardEngine = {
             <button type="button" class="tb color-swatch ${drawCol==='#e74c3c'?'on':''}" data-action="set-draw-color" data-color="#e74c3c" style="background:#e74c3c" title="Червоний"></button>
             <button type="button" class="tb color-swatch ${drawCol==='#9b59b6'?'on':''}" data-action="set-draw-color" data-color="#9b59b6" style="background:#9b59b6" title="Фіолетовий"></button>
             <button type="button" class="tb color-swatch ${drawCol==='#1a73e8'?'on':''}" data-action="set-draw-color" data-color="#1a73e8" style="background:#1a73e8" title="Синій клуб"></button>
+            <button type="button" class="tb color-swatch ${drawCol==='#111111'?'on':''}" data-action="set-draw-color" data-color="#111111" style="background:#111;border:1px solid #666" title="Чорний"></button>
           </span>
         </div>
         <div class="tg inv-group" title="Інвентар">
