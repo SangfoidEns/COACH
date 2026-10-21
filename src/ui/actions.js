@@ -225,12 +225,15 @@ const Actions = {
         }).join('')}
       </div>`, [
       { label: 'Скасувати', cls: 'btn-s', action: 'cancel' },
+      { label: 'Відвідування', cls: 'btn-s', action: 'open-attendance' },
       { label: 'На дошку', cls: 'btn-s', action: 'open-training-board' },
       { label: 'Зберегти', cls: 'btn-p', action: 'save-training' }
     ]);
     // attach tid
     const saveBtn = document.querySelector('[data-modal-action="save-training"]');
     if (saveBtn) saveBtn.dataset.tid = id;
+    const attBtn = document.querySelector('[data-modal-action="open-attendance"]');
+    if (attBtn) attBtn.dataset.tid = id;
 
     // block actions via delegation on modal
     document.getElementById('modalBody').onclick = e => {
@@ -335,6 +338,8 @@ const Actions = {
         <div class="fgr"><label>Готовність %</label><input type="number" id="plR" value="95" min="0" max="100"></div>
         <div class="fgr"><label>Група</label><select id="plG"><option value="main">Основний</option><option value="reserve">Резерв</option><option value="gk">Воротарі</option></select></div>
         <div class="fgr full"><label class="chk-label"><input type="checkbox" id="plCap"> Капітан команди</label></div>
+        <div class="fgr"><label>Telegram (@нік)</label><input id="plTg" placeholder="@username" autocomplete="off"></div>
+        <div class="fgr"><label>Телефон</label><input id="plPhone" type="tel" placeholder="+49..." autocomplete="off"></div>
         <div class="fgr full"><label>Примітки</label><textarea id="plNo"></textarea></div>
       </div>`, [
       { label: 'Скасувати', cls: 'btn-s', action: 'cancel' },
@@ -361,7 +366,9 @@ const Actions = {
       condition: +document.getElementById('plC')?.value || 90,
       readiness: +document.getElementById('plR')?.value || 90,
       load: 0, notes: document.getElementById('plNo')?.value || '',
-      group: document.getElementById('plG')?.value || 'main', tags: []
+      group: document.getElementById('plG')?.value || 'main', tags: [],
+      telegramUsername: (document.getElementById('plTg')?.value || '').replace(/^@/, '').trim(),
+      phone: (document.getElementById('plPhone')?.value || '').trim()
     });
     StorageManager.save();
     Modal.close();
@@ -402,7 +409,10 @@ const Actions = {
           <option value="reserve" ${p.group==='reserve'?'selected':''}>Резерв</option>
           <option value="gk" ${p.group==='gk'?'selected':''}>Воротарі</option>
         </select></div>
+        <div class="fgr"><label>Telegram (@нік)</label><input id="peTg" value="${sanitize(p.telegramUsername||'')}" placeholder="@username" autocomplete="off"></div>
+        <div class="fgr"><label>Телефон</label><input id="pePhone" type="tel" value="${sanitize(p.phone||'')}" placeholder="+49..." autocomplete="off"></div>
         <div class="fgr full"><label>Примітки / Індивідуальна програма</label><textarea id="peNo">${sanitize(p.notes||'')}</textarea></div>
+        <p class="note-sm" style="grid-column:1/-1;margin:0">Telegram-нік потрібен для майбутнього входу гравця / персоналу в Mini App.</p>
       </div>`, [
       { label: 'Скасувати', cls: 'btn-s', action: 'cancel' },
       { label: 'Зберегти', cls: 'btn-p', action: 'save-player' }
@@ -427,6 +437,8 @@ const Actions = {
     p.load = +document.getElementById('peLoad')?.value ?? p.load;
     p.group = document.getElementById('peG')?.value || p.group;
     p.notes = document.getElementById('peNo')?.value || '';
+    p.telegramUsername = (document.getElementById('peTg')?.value || '').replace(/^@/, '').trim();
+    p.phone = (document.getElementById('pePhone')?.value || '').trim();
     const wantCap = !!document.getElementById('peCap')?.checked;
     if (wantCap) {
       Store.get().players.forEach(x => { x.isCaptain = (x.id === p.id); });
@@ -453,6 +465,90 @@ const Actions = {
     Toast.show(wantCap ? 'Збережено · Капітан' : (p.status === 'injured' ? 'Збережено · Травма' : 'Збережено'), 'ok');
     App.renderCurrent();
     try { if (typeof BoardEngine !== 'undefined') BoardEngine.render(); } catch (_) {}
+  },
+
+
+  /** Модалка відвідування: присутність + індивідуальний RPE */
+  openAttendance(trainingId) {
+    const t = Store.get().trainings.find(x => x.id === trainingId);
+    if (!t) { Toast.show('Тренування не знайдено', 'warn'); return; }
+    if (!t.attendance) t.attendance = {};
+    const players = (Store.get().players || []).slice().sort((a, b) => (a.number || 0) - (b.number || 0));
+    const rows = players.map(p => {
+      const a = t.attendance[p.id] || {};
+      const present = a.present !== false; // default present
+      const hasRecord = t.attendance[p.id] != null;
+      const checked = hasRecord ? !!a.present : true;
+      const intv = a.intensity != null ? a.intensity : (t.intensity || 6);
+      return `<div class="att-row" data-pid="${p.id}">
+        <label class="att-check"><input type="checkbox" class="att-present" ${checked ? 'checked' : ''}> <span>${p.number}. ${sanitize(p.lastName || p.firstName || '')}</span></label>
+        <span class="att-pos">${sanitize(p.position || '')}</span>
+        <input type="number" class="att-rpe" min="1" max="10" value="${intv}" title="Індивідуальний RPE" ${checked ? '' : 'disabled'}>
+      </div>`;
+    }).join('');
+    Modal.open('Відвідування · ' + sanitize(t.name), `
+      <p class="note-sm">Позначте присутніх і виставте індивідуальну інтенсивність (RPE 1–10). Це впливає на аналітику навантаження.</p>
+      <div class="att-toolbar">
+        <button type="button" class="btn btn-s btn-sm" id="attAllOn">Усі ✓</button>
+        <button type="button" class="btn btn-s btn-sm" id="attAllOff">Нікого</button>
+        <button type="button" class="btn btn-s btn-sm" id="attRpeAll">RPE = сесія (${t.intensity || 6})</button>
+      </div>
+      <div class="att-list">${rows || '<div class="es">Немає гравців у складі</div>'}</div>
+    `, [
+      { label: 'Скасувати', cls: 'btn-s', action: 'cancel' },
+      { label: 'Зберегти відвідування', cls: 'btn-p', action: 'save-attendance' }
+    ]);
+    const btn = document.querySelector('[data-modal-action="save-attendance"]');
+    if (btn) btn.dataset.tid = trainingId;
+    const list = document.querySelector('.att-list');
+    list?.addEventListener('change', e => {
+      if (e.target.classList.contains('att-present')) {
+        const row = e.target.closest('.att-row');
+        const rpe = row?.querySelector('.att-rpe');
+        if (rpe) rpe.disabled = !e.target.checked;
+      }
+    });
+    document.getElementById('attAllOn')?.addEventListener('click', () => {
+      list?.querySelectorAll('.att-row').forEach(row => {
+        const c = row.querySelector('.att-present');
+        const r = row.querySelector('.att-rpe');
+        if (c) c.checked = true;
+        if (r) r.disabled = false;
+      });
+    });
+    document.getElementById('attAllOff')?.addEventListener('click', () => {
+      list?.querySelectorAll('.att-row').forEach(row => {
+        const c = row.querySelector('.att-present');
+        const r = row.querySelector('.att-rpe');
+        if (c) c.checked = false;
+        if (r) r.disabled = true;
+      });
+    });
+    document.getElementById('attRpeAll')?.addEventListener('click', () => {
+      const v = t.intensity || 6;
+      list?.querySelectorAll('.att-rpe').forEach(r => { r.value = v; });
+    });
+  },
+
+  saveAttendance(trainingId) {
+    const t = Store.get().trainings.find(x => x.id === trainingId);
+    if (!t) return;
+    if (!t.attendance) t.attendance = {};
+    document.querySelectorAll('.att-row').forEach(row => {
+      const pid = row.dataset.pid;
+      if (!pid) return;
+      const present = !!row.querySelector('.att-present')?.checked;
+      const intensity = Math.max(1, Math.min(10, +row.querySelector('.att-rpe')?.value || t.intensity || 6));
+      t.attendance[pid] = { present, intensity, updatedAt: new Date().toISOString() };
+    });
+    // позначення сесії як проведеної, якщо була planned
+    if (t.status === 'planned') t.status = 'done';
+    try { LoadModel.recomputePlayerLoads(Store.get().players, Store.get().trainings); } catch (_) {}
+    StorageManager.save();
+    Modal.close();
+    const n = Object.values(t.attendance).filter(a => a.present).length;
+    Toast.show('Відвідування: ' + n + ' присутніх', 'ok');
+    App.renderCurrent();
   },
 
   newExercise() {

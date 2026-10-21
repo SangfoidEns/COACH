@@ -85,7 +85,8 @@ const Views = {
             <div class="me" style="font-size:11px;color:var(--muted);margin-top:3px">${t.date} ${t.time || ''} · ${t.duration}хв · <span class="badge b-i">${t.status}</span> · Load: ${LoadModel.sessionLoad(t.duration, t.intensity)}</div>
             ${t.structure ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">${t.structure.map(b => sanitize(b.title || b.name) + '(' + b.duration + 'хв)').join(' → ')} = ${total}хв</div>` : ''}
           </div>
-          <div style="display:flex;gap:3px" data-edit-training="${t.id}">
+          <div style="display:flex;gap:3px" onclick="event.stopPropagation()">
+            <button type="button" class="btn btn-s btn-sm" data-attendance-training="${t.id}" title="Відвідування">✓ Відвід.</button>
             <button type="button" class="btn btn-s btn-sm" data-edit-training="${t.id}">Деталі</button>
             <button type="button" class="btn btn-s btn-sm" data-dup-training="${t.id}">Дубль</button>
             <button type="button" class="btn btn-d btn-sm" data-del-training="${t.id}">✕</button>
@@ -133,10 +134,11 @@ const Views = {
       const bc = (st === 'available' || st === 'healthy') ? 'b-ok' : (st === 'injured' ? 'b-d' : 'b-w');
       const lc = (p.load || 0) < 4 ? 'll' : (p.load || 0) < 7 ? 'lm' : 'lh';
       const cap = p.isCaptain ? ' <span class="player-cap-tag">C</span>' : '';
+      const tg = p.telegramUsername ? ' <span class="player-tg">@' + sanitize(p.telegramUsername) + '</span>' : '';
       const inj = (st === 'injured') ? ' <span class="player-inj-ico" title="Травма">✚</span>' : '';
       return `<tr>
         <td><span class="pn ${p.position === 'GK' ? 'gk' : ''}">${p.number}</span></td>
-        <td>${sanitize(p.firstName)} ${sanitize(p.lastName)}${cap}${inj}</td>
+        <td>${sanitize(p.firstName)} ${sanitize(p.lastName)}${cap}${tg}${inj}</td>
         <td>${p.position}</td><td>${p.age}</td>
         <td><span class="badge ${bc}">${statusLabel(st)}</span></td>
         <td>${p.condition}%</td><td>${p.readiness}%</td>
@@ -282,27 +284,58 @@ const Views = {
     const totalTime = s.trainings.reduce((a, t) => a + (t.duration || 0), 0);
     const avgInt = s.trainings.length ? (s.trainings.reduce((a, t) => a + (t.intensity || 0), 0) / s.trainings.length).toFixed(1) : '—';
     const weekLoad = LoadModel.weeklyLoad(s.trainings);
-    const recent = s.trainings.slice(-8);
+    const recent = s.trainings.slice().sort((a, b) => (a.date || '').localeCompare(b.date || '')).slice(-8);
+    const withAtt = s.trainings.filter(t => t.attendance && Object.keys(t.attendance).length);
+    let attPresent = 0, attTotal = 0;
+    withAtt.forEach(t => {
+      Object.values(t.attendance).forEach(a => { attTotal++; if (a.present) attPresent++; });
+    });
+    const attPct = attTotal ? Math.round((attPresent / attTotal) * 100) : null;
     return `
       <div class="st">Аналітика <button class="btn btn-s btn-sm" data-action="export-stats">Експорт</button></div>
-      <p class="note-sm" style="margin-bottom:12px">Навантаження = Тривалість × RPE. Це планувальний показник, а не медична оцінка.</p>
+      <p class="note-sm" style="margin-bottom:12px">Навантаження = Тривалість × RPE. Індивідуальний RPE — з відміток відвідування. Це планувальний показник, а не медична оцінка.</p>
       <div class="dg">
         <div class="sc"><div class="lb">Тренувань</div><div class="vl">${s.trainings.length}</div></div>
         <div class="sc"><div class="lb">Загальний час</div><div class="vl">${totalTime}<span style="font-size:13px"> хв</span></div></div>
         <div class="sc"><div class="lb">Сер. інтенсивність</div><div class="vl">${avgInt}</div></div>
         <div class="sc"><div class="lb">Тижневий Load</div><div class="vl">${weekLoad}</div></div>
+        <div class="sc"><div class="lb">Відвідуваність</div><div class="vl">${attPct != null ? attPct + '%' : '—'}</div><div class="sb">${withAtt.length} сесій з відмітками</div></div>
       </div>
       <div class="card"><div class="ct">Навантаження (останні тренування)</div>
         <div class="cp"><div class="bc">${recent.length ? recent.map(t =>
           `<div class="bar" style="height:${Math.min(100, (LoadModel.sessionLoad(t.duration, t.intensity) / 10))}%" title="${sanitize(t.name)}: ${LoadModel.sessionLoad(t.duration, t.intensity)}"><span>${(t.date || '').slice(5)}</span></div>`
         ).join('') : '<div style="color:var(--muted)">Немає даних</div>'}</div></div>
       </div>
-      <div class="card"><div class="ct">Індивідуальне навантаження</div>
-        ${s.players.slice().sort((a, b) => (b.load || 0) - (a.load || 0)).map(p => {
-          const lc = (p.load || 0) < 4 ? 'll' : (p.load || 0) < 7 ? 'lm' : 'lh';
+      <div class="card"><div class="ct">Сесії · відвідування
+        <button type="button" class="btn btn-s btn-sm" style="margin-left:auto" data-view="trainings">До тренувань</button>
+      </div>
+        ${withAtt.length ? withAtt.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'')).slice(0,8).map(t => {
+          const vals = Object.values(t.attendance || {});
+          const pr = vals.filter(a => a.present).length;
+          return `<div class="li"><div class="inf"><div class="ti">${sanitize(t.name)}</div>
+            <div class="me">${t.date || ''} · ${pr}/${vals.length} присутні · RPE ${t.intensity || '—'}</div></div>
+            <button type="button" class="btn btn-s btn-sm" data-attendance-training="${t.id}">✎ Відмітки</button></div>`;
+        }).join('') : '<div class="es">Ще немає відміток. Відкрийте тренування → «Відвідування».</div>'}
+      </div>
+      <div class="card"><div class="ct">Індивідуальне навантаження та відвідуваність</div>
+        ${s.players.slice().sort((a, b) => {
+          const la = LoadModel.playerLoad(s.trainings, a.id, 28);
+          const lb = LoadModel.playerLoad(s.trainings, b.id, 28);
+          return lb - la;
+        }).map(p => {
+          const rate = LoadModel.attendanceRate(s.trainings, p.id);
+          const avgRpe = LoadModel.avgPlayerRpe(s.trainings, p.id);
+          const pload = LoadModel.playerLoad(s.trainings, p.id, 28);
+          const bar = avgRpe != null ? avgRpe : (p.load || 0);
+          const lc = bar < 4 ? 'll' : (bar < 7 ? 'lm' : 'lh');
+          const tg = p.telegramUsername ? ' · @' + sanitize(p.telegramUsername) : '';
           return `<div class="li"><div class="inf"><div class="ti">${p.number}. ${sanitize(p.firstName)} ${sanitize(p.lastName)}</div>
-            <div class="me">${p.position} · ${p.condition}%</div></div>
-            <div style="min-width:70px"><div class="lb2"><div class="lbf ${lc}" style="width:${(p.load || 0) * 10}%"></div></div></div>
+            <div class="me">${p.position} · готовність ${p.condition ?? p.readiness ?? '—'}%${tg}
+              ${rate != null ? ' · відвідув. ' + rate + '%' : ''}
+              ${avgRpe != null ? ' · сер. RPE ' + avgRpe : ''}
+              ${pload ? ' · load 28д ' + pload : ''}
+            </div></div>
+            <div style="min-width:70px"><div class="lb2"><div class="lbf ${lc}" style="width:${Math.min(100, bar * 10)}%"></div></div></div>
           </div>`;
         }).join('')}
       </div>`;

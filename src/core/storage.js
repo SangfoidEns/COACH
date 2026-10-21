@@ -303,7 +303,10 @@ const StorageManager = {
       load: p.load ?? 0,
       notes: p.notes || '',
       group: p.group || 'main',
-      tags: p.tags || []
+      tags: p.tags || [],
+      telegramUsername: (p.telegramUsername || p.tgUsername || '').replace(/^@/, ''),
+      telegramId: p.telegramId || p.tgId || null,
+      phone: p.phone || ''
     };
   },
 
