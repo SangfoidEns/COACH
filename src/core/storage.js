@@ -681,10 +681,24 @@ const StorageManager = {
             TelegramManager.tg.CloudStorage.setItem('ms_last_import', String(Date.now()), () => {});
           }
         } catch (_) {}
+        try {
+          if (typeof AuthManager !== 'undefined') AuthManager.afterDataImport();
+        } catch (_) {}
         try { App.applyBranding(); } catch (_) {}
         try { App.renderCurrent(); } catch (_) {}
+        try { App.updateHeader && App.updateHeader(); } catch (_) {}
         try { this.pushToCloud(this._buildLocalPayload()); } catch (_) {}
-        Toast.show('Успішно! Дані повністю оновлено.', 'ok');
+        let roleMsg = '';
+        try {
+          if (typeof AuthManager !== 'undefined') {
+            roleMsg = ' · ви: ' + AuthManager.roleLabel();
+            if (AuthManager.isPlayer() && AuthManager.getLinkedPlayer()) {
+              const pl = AuthManager.getLinkedPlayer();
+              roleMsg += ' (' + (pl.lastName || pl.firstName || '') + ')';
+            }
+          }
+        } catch (_) {}
+        Toast.show('Імпорт успішний' + roleMsg, 'ok');
         return true;
       } catch (e) {
         try { ErrorManager.log('import', e); } catch (_) {}

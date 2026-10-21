@@ -3924,12 +3924,41 @@ body.board-only-mode #boardToolbarBottom.btb-bottom {
   z-index: 8 !important;
 }
 #playersLayer .eq {
-  max-width: 36px;
-  max-height: 36px;
+  max-width: 16px !important;
+  max-height: 16px !important;
 }
-#playersLayer .ball {
+#playersLayer .eq.chip-lg,
+#playersLayer .eq.mark-sq {
   max-width: 18px !important;
   max-height: 18px !important;
+}
+#playersLayer .eq.wall,
+#playersLayer .eq.mannequin {
+  max-width: 14px !important;
+  max-height: 22px !important;
+}
+#playersLayer .ball {
+  max-width: 14px !important;
+  max-height: 14px !important;
+}
+/* Індикатор готовності / load — більший за фішку */
+.pt-load-ring,
+.pt-ring {
+  position: absolute !important;
+  left: 50% !important;
+  top: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  pointer-events: none !important;
+  z-index: 0 !important;
+  overflow: visible !important;
+}
+.pt .pt-num,
+.pt .pt-label {
+  position: relative;
+  z-index: 2;
+}
+.pt {
+  overflow: visible !important;
 }
 
 /* ═══ Role UI ═══ */

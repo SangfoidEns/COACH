@@ -5,7 +5,7 @@ const AuthManager = {
   linkedPlayerId: null,
 
   /** Єдиний тренер за замовчуванням */
-  DEFAULT_COACHES: ['artem_serdiuk'],
+  DEFAULT_COACHES: ['Serdiuk_Artem'],
 
   init() {
     try {
@@ -43,23 +43,36 @@ const AuthManager = {
     }
   },
 
+  /** Нормалізація ніка: без @, lower-case */
+  _normNick(v) {
+    return String(v || '').trim().replace(/^@/, '').toLowerCase();
+  },
+
   _ensureRbacDefaults() {
     try {
       const s = Store.get();
       if (!s) return;
       if (!s.settings) s.settings = {};
       if (!s.settings.rbac) s.settings.rbac = { coaches: [], playerLinks: {} };
-      if (!Array.isArray(s.settings.rbac.coaches) || !s.settings.rbac.coaches.length) {
-        s.settings.rbac.coaches = this.DEFAULT_COACHES.slice();
-      }
       if (!s.settings.rbac.playerLinks) s.settings.rbac.playerLinks = {};
-      // Автоприв'язка: telegramUsername у анкеті → playerLinks
+
+      // Тренер ЗАВЖДИ @Serdiuk_Artem (не плутати з @Artem_Serdyuk)
+      let coaches = Array.isArray(s.settings.rbac.coaches) ? s.settings.rbac.coaches.map(String) : [];
+      const hasCoach = coaches.some(c => this._normNick(c) === 'serdiuk_artem');
+      if (!hasCoach) coaches = ['Serdiuk_Artem'].concat(coaches);
+      // прибрати помилкові варіанти, що плутають з гравцем
+      coaches = coaches.filter(c => {
+        const n = this._normNick(c);
+        return n && n !== 'artem_serdyuk' && n !== 'artem_serdiuk';
+      });
+      if (!coaches.length) coaches = ['Serdiuk_Artem'];
+      s.settings.rbac.coaches = coaches;
+
+      // Автоприв'язка гравців з анкет (telegramUsername / telegramId)
       (s.players || []).forEach(p => {
-        const tg = (p.telegramUsername || '').replace(/^@/, '').toLowerCase();
-        if (!tg) return;
-        const key = '@' + tg;
-        if (!s.settings.rbac.playerLinks[key] && !s.settings.rbac.playerLinks[tg]) {
-          s.settings.rbac.playerLinks[key] = p.id;
+        const tg = this._normNick(p.telegramUsername);
+        if (tg && tg !== 'serdiuk_artem') {
+          s.settings.rbac.playerLinks['@' + tg] = p.id;
           s.settings.rbac.playerLinks[tg] = p.id;
         }
         if (p.telegramId) {
@@ -88,10 +101,12 @@ const AuthManager = {
     const uname = (this.user.username || '').toLowerCase().replace(/^@/, '');
     const unameAt = uname ? '@' + uname : '';
 
-    const isCoach = coaches.some(c => {
-      const v = String(c).toLowerCase().replace(/^@/, '');
+    let isCoach = coaches.some(c => {
+      const v = this._normNick(c);
       return v === idStr || v === uname;
     });
+    // @Artem_Serdyuk — гравець, ніколи тренер (не плутати з @Serdiuk_Artem)
+    if (uname === 'artem_serdyuk') isCoach = false;
 
     if (isCoach) {
       this.role = 'coach';
@@ -147,11 +162,13 @@ const AuthManager = {
       'view-analytics': false,
       'view-board': false,
       'view-diary': false,
-      'view-settings': false,
+      'view-settings': true,
       'edit-board': false,
       'edit-players': false,
       'edit-trainings': false,
       'edit-exercises': false,
+      'import': true,
+      'export': false,
       'import-export': false,
       'reset-data': false,
       'apply-scheme': false
@@ -171,6 +188,8 @@ const AuthManager = {
       'edit-players': false,
       'edit-trainings': false,
       'edit-exercises': false,
+      'import': true,
+      'export': false,
       'import-export': false,
       'reset-data': false,
       'apply-scheme': false
@@ -212,6 +231,16 @@ const AuthManager = {
     this._resolveRole();
     this._applyUiRole();
     if (typeof StorageManager !== 'undefined') StorageManager.save();
+  },
+
+  /** Викликати після імпорту JSON — оновити ролі за новими анкетами */
+  afterDataImport() {
+    this._ensureRbacDefaults();
+    this._resolveRole();
+    this._applyUiRole();
+    try {
+      if (typeof StorageManager !== 'undefined') StorageManager.save();
+    } catch (_) {}
   },
 
   linkPlayer(telegramKey, playerId) {

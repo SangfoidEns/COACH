@@ -122,7 +122,9 @@ const Views = {
       .sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 6);
 
     return `
-      <div class="st">Команда · МЕТАЛІСТ ШТУТГАРТ</div>
+      <div class="st">Команда · МЕТАЛІСТ ШТУТГАРТ
+        <button type="button" class="btn btn-s btn-sm" data-io="import" data-action="import-trigger" title="Оновити дані від тренера">Імпорт JSON</button>
+      </div>
       ${me ? this._fifaCard(me, stats) : this._noPlayerLink()}
       <div class="dg player-team-stats">
         <div class="sc"><div class="lb">Наступне тренування</div><div class="vl" style="font-size:13px">${next ? sanitize(next.name) : '—'}</div><div class="sb">${next ? next.date + ' ' + (next.time || '') : ''}</div></div>
@@ -156,7 +158,9 @@ const Views = {
     const next = s.trainings.filter(t => t.status === 'planned' && t.date >= today()).sort((a, b) => a.date.localeCompare(b.date))[0];
     const nextMatch = s.matches.filter(m => m.date >= today()).sort((a, b) => a.date.localeCompare(b.date))[0];
     return `
-      <div class="st">МЕТАЛІСТ ШТУТГАРТ</div>
+      <div class="st">МЕТАЛІСТ ШТУТГАРТ
+        <button type="button" class="btn btn-s btn-sm" data-io="import" data-action="import-trigger">Імпорт JSON</button>
+      </div>
       <div class="card glass guest-hero">
         <div class="guest-title">Офіційний клубний простір</div>
         <p class="note-sm">Ви увійшли як <strong>гість</strong>. Повна статистика доступна гравцям складу та тренеру.</p>
@@ -490,7 +494,7 @@ const Views = {
       <div class="card"><div class="ct">Дані</div>
         <div class="fa" style="flex-direction:column;align-items:stretch;gap:10px">
           <div class="data-io glass-io">
-            <button type="button" class="btn btn-p data-io-btn" id="btnExportJson" data-io="export" data-action="export">Експорт JSON</button>
+            <button type="button" class="btn btn-p data-io-btn coach-only" id="btnExportJson" data-io="export" data-action="export">Експорт JSON</button>
             <button type="button" class="btn btn-s data-io-btn" id="btnImportJson" data-io="import" data-action="import-trigger">Імпорт JSON</button>
           </div>
           <p class="note-sm">На iPhone: «Файли» / iCloud Drive. Перед імпортом створюється резервна копія.</p>
@@ -498,9 +502,9 @@ const Views = {
         </div>
       </div>
       <div class="card"><div class="ct">Ролі та Telegram (RBAC)</div>
-        <p class="note-sm" style="margin-bottom:10px">Порожній список тренерів = повний доступ усім. Додайте Telegram ID або @username.</p>
+        <p class="note-sm" style="margin-bottom:10px">Тренер завжди @Serdiuk_Artem. Гравець @Artem_Serdyuk визначається з анкети (Telegram). Імпорт JSON доступний усім.</p>
         <div class="fgr full"><label>Тренері (через кому)</label>
-          <input type="text" id="setCoaches" value="${coachesStr}" placeholder="123456789, @coach_nick">
+          <input type="text" id="setCoaches" value="${coachesStr}" placeholder="Serdiuk_Artem">
         </div>
         <div class="fgr full"><label>Прив'язка гравців (JSON)</label>
           <textarea id="setPlayerLinks" rows="3" placeholder='{"123":"p01"}'>${linksStr}</textarea>
@@ -523,7 +527,7 @@ const Views = {
           <div class="ct">Помилка відображення</div>
           <p class="note-sm">${sanitize(e && e.message ? e.message : String(e))}</p>
           <div class="data-io glass-io" style="margin-top:12px">
-            <button type="button" class="btn btn-p data-io-btn" data-io="export" data-action="export">Експорт JSON</button>
+            <button type="button" class="btn btn-p data-io-btn coach-only" data-io="export" data-action="export">Експорт JSON</button>
             <button type="button" class="btn btn-s data-io-btn" data-io="import" data-action="import-trigger">Імпорт JSON</button>
           </div>
           <button type="button" class="btn btn-s" data-action="save-settings" style="margin-top:8px">Спробувати зберегти</button>

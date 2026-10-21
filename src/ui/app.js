@@ -178,8 +178,9 @@ const App = {
         } catch (_) {}
 
         if (exp) {
-          if (typeof AuthManager !== 'undefined' && !AuthManager.can('import-export')) {
-            Toast.show('Експорт доступний лише тренеру', 'warn');
+          // Експорт — ТІЛЬКИ тренер @Serdiuk_Artem
+          if (typeof AuthManager !== 'undefined' && !AuthManager.isCoach()) {
+            Toast.show('Експорт JSON доступний лише тренеру', 'warn');
             return;
           }
           try {
@@ -191,10 +192,7 @@ const App = {
         }
 
         if (imp) {
-          if (typeof AuthManager !== 'undefined' && !AuthManager.can('import-export')) {
-            Toast.show('Імпорт доступний лише тренеру', 'warn');
-            return;
-          }
+          // Імпорт — для всіх (тренер / гравець / гість)
           try {
             StorageManager.pickAndImportJSON();
           } catch (err) {
