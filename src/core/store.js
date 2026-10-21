@@ -11,7 +11,7 @@ const Store = (() => {
       settings: {
         clubName: 'МЕТАЛІСТ ШТУТГАРТ', clubShort: 'МШ', primary: '#1a3a5c', accent: '#c8a84b',
         logoData: null, defaultDuration: 90, defaultIntensity: 6, autosave: true, sound: true, theme: 'dark', defaultScheme: '4-3-3',
-        rbac: { coaches: [], playerLinks: {} }
+        rbac: { coaches: ['artem_serdiuk'], playerLinks: {} }
       },
       players: JSON.parse(JSON.stringify(DEMO.players)),
       trainings: [],

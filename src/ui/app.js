@@ -811,6 +811,24 @@ const App = {
         Toast.show(sel ? 'Колір на виділене' : 'Колір задано — тепер додавайте фішки / схему', 'ok');
         return;
       }
+      
+      // Role guard: гравець/гість не редагують
+      try {
+        if (typeof AuthManager !== 'undefined' && !AuthManager.isCoach()) {
+          const editActions = ['new-player','new-training','board-clear','board-save','import-json','export-json','reset-data'];
+          if (action && editActions.includes(action)) {
+            e.preventDefault(); e.stopPropagation();
+            Toast.show('Лише тренер може це змінювати', 'warn');
+            return;
+          }
+          if (e.target.closest('[data-edit-player],[data-del-player],[data-edit-training],[data-del-training],[data-attendance-training]')) {
+            e.preventDefault(); e.stopPropagation();
+            Toast.show('Режим перегляду', 'warn');
+            return;
+          }
+        }
+      } catch (_) {}
+
       if (action === 'exit-board') {
         e.preventDefault(); e.stopPropagation();
         try { BoardEngine.leaveBoardMode && BoardEngine.leaveBoardMode(); } catch (_) {

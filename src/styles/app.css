@@ -3870,3 +3870,163 @@ body.board-only-mode #boardToolbarBottom.btb-bottom {
 }
 .att-rpe:disabled { opacity:0.4; }
 .player-tg { font-size:11px; color:#7ec8ff; font-weight:500; }
+
+.bench-sec {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.45);
+  padding: 8px 6px 4px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
+.bench-sec.inj-sec { color: #e74c3c; }
+.bench-tag.reh { color: #f1c40f; font-weight: 700; margin-left: 4px; }
+.bench-tag.res { color: #95a5a6; font-weight: 700; margin-left: 4px; }
+.btb-bottom .tg {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 5px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.btb-bottom .tb { min-width: 36px; min-height: 36px; border-radius: 8px; }
+.btb-bottom .tb.on {
+  background: rgba(213,255,63,0.18);
+  box-shadow: 0 0 0 1px rgba(213,255,63,0.4);
+}
+.zoom-indicator {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 30;
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  background: rgba(0,0,0,0.55);
+  color: #d5ff3f;
+  pointer-events: none;
+}
+
+/* Інвентар — компактний, під масштаб поля */
+.inv-group {
+  background: rgba(213,255,63,0.06) !important;
+  border-color: rgba(213,255,63,0.2) !important;
+}
+.eq {
+  box-sizing: border-box;
+  z-index: 9 !important;
+}
+.eq.chip, .eq.chip-lg, .eq.mark-dot, .eq.mark-sq {
+  z-index: 8 !important;
+}
+#playersLayer .eq {
+  max-width: 36px;
+  max-height: 36px;
+}
+#playersLayer .ball {
+  max-width: 18px !important;
+  max-height: 18px !important;
+}
+
+/* ═══ Role UI ═══ */
+body.role-player .coach-only,
+body.role-guest .coach-only { display: none !important; }
+body.role-guest .nav[data-view="board"],
+body.role-guest .nav[data-view="analytics"],
+body.role-guest .nav[data-view="diary"],
+body.role-guest .nav[data-view="settings"],
+body.role-guest .mni[data-view="board"],
+body.role-guest .mni[data-view="analytics"],
+body.role-guest .mni[data-view="diary"],
+body.role-guest .mni[data-view="settings"] { display: none !important; }
+body.role-player .nav[data-view="board"],
+body.role-player .mni[data-view="board"] { display: none !important; }
+
+/* ═══ FIFA + Glass player card ═══ */
+.fifa-card {
+  position: relative;
+  overflow: hidden;
+  margin: 0 0 16px;
+  padding: 18px 16px 14px;
+  border-radius: 20px;
+  background: linear-gradient(160deg, rgba(26,58,92,0.85) 0%, rgba(15,23,42,0.92) 55%, rgba(10,20,35,0.95) 100%);
+  border: 1px solid rgba(255,255,255,0.14);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.18);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+}
+.fifa-card.glass { transform: translateZ(0); }
+.fifa-shine {
+  pointer-events: none;
+  position: absolute; inset: 0;
+  background: linear-gradient(125deg, transparent 40%, rgba(255,255,255,0.08) 50%, transparent 60%);
+}
+.fifa-top { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
+.fifa-ovr {
+  display: flex; flex-direction: column; align-items: center;
+  min-width: 52px; padding: 6px 8px;
+  border-radius: 12px; border: 2px solid #c8a84b;
+  background: rgba(0,0,0,0.25);
+}
+.fifa-ovr-num { font-size: 22px; font-weight: 800; line-height: 1; color: #fff; }
+.fifa-pos { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; }
+.fifa-avatar {
+  position: relative;
+  width: 64px; height: 64px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; font-weight: 800; color: #fff;
+  border: 2px solid rgba(255,255,255,0.25);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+}
+.fifa-cap {
+  position: absolute; top: -4px; right: -4px;
+  width: 22px; height: 22px; border-radius: 50%;
+  background: #f1c40f; color: #111; font-size: 11px; font-weight: 900;
+  display: flex; align-items: center; justify-content: center;
+  border: 2px solid #0f172a;
+}
+.fifa-club { margin-left: auto; text-align: right; }
+.fifa-club-name { font-size: 11px; font-weight: 800; letter-spacing: 0.12em; color: #c8a84b; }
+.fifa-club-sub { font-size: 10px; color: rgba(255,255,255,0.45); }
+.fifa-name { font-size: 18px; color: #fff; margin-bottom: 2px; }
+.fifa-num { color: #c8a84b; font-weight: 800; margin-right: 6px; }
+.fifa-meta { font-size: 12px; color: rgba(255,255,255,0.5); margin-bottom: 14px; }
+.fifa-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.fifa-stat {
+  text-align: center;
+  padding: 8px 4px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.fifa-stat b { display: block; font-size: 15px; color: #d5ff3f; font-weight: 800; }
+.fifa-stat span { font-size: 10px; color: rgba(255,255,255,0.45); text-transform: uppercase; letter-spacing: 0.04em; }
+
+.team-mini-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.team-mini {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 10px; border-radius: 10px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  font-size: 12px;
+}
+.team-mini.me { border-color: #d5ff3f; background: rgba(213,255,63,0.1); }
+.team-mini.inj { border-color: #e74c3c55; }
+.team-mini.reh { border-color: #f1c40f55; }
+.tm-num { color: #c8a84b; font-weight: 700; }
+.tm-pos { color: rgba(255,255,255,0.4); font-size: 10px; }
+.guest-hero { text-align: center; padding: 20px; }
+.guest-title { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
+
+@media (max-width: 480px) {
+  .fifa-stats { grid-template-columns: repeat(3, 1fr); }
+  .fifa-avatar { width: 56px; height: 56px; }
+}

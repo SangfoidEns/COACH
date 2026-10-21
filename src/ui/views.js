@@ -1,8 +1,18 @@
 /** Extracted module: src/ui/views.js lines 1491-1818 — DO NOT rewrite business logic */
 const Views = {
   dashboard() {
+    try {
+      if (typeof AuthManager !== 'undefined') {
+        if (AuthManager.isPlayer()) return this._playerHome();
+        if (AuthManager.isGuest()) return this._guestHome();
+      }
+    } catch (_) {}
+    return this._coachHome();
+  },
+
+  _coachHome() {
     const s = Store.get();
-    const avail = s.players.filter(p => p.status === 'available').length;
+    const avail = s.players.filter(p => p.status === 'available' || p.status === 'healthy' || !p.status).length;
     const injured = s.players.filter(p => p.status === 'injured' || p.status === 'recovery' || p.status === 'rehab').length;
     const next = s.trainings.filter(t => t.status === 'planned' && t.date >= today()).sort((a, b) => a.date.localeCompare(b.date))[0];
     const weekLoad = LoadModel.weeklyLoad(s.trainings);
@@ -12,50 +22,157 @@ const Views = {
     const drafts = s.trainings.filter(t => t.status === 'draft' || t.status === 'pinned');
 
     return `
-      <div class="st">Головна панель тренера</div>
+      <div class="st">Головна · МЕТАЛІСТ ШТУТГАРТ</div>
       <div class="dg">
         <div class="sc"><div class="lb">Доступні гравці</div><div class="vl">${avail}</div><div class="sb">з ${s.players.length}</div></div>
         <div class="sc"><div class="lb">Травмовані / відновлення</div><div class="vl" style="color:var(--danger)">${injured}</div></div>
         <div class="sc"><div class="lb">Наступне тренування</div><div class="vl" style="font-size:14px">${next ? sanitize(next.name) : '—'}</div><div class="sb">${next ? next.date + ' ' + (next.time || '') : ''}</div></div>
         <div class="sc"><div class="lb">Тривалість</div><div class="vl">${next ? next.duration : 0}<span style="font-size:13px"> хв</span></div></div>
-        <div class="sc"><div class="lb">Тижневе навантаження</div><div class="vl">${weekLoad}</div><div class="sb">Duration × RPE (планувальний)</div></div>
+        <div class="sc"><div class="lb">Тижневе навантаження</div><div class="vl">${weekLoad}</div><div class="sb">Duration × RPE</div></div>
         <div class="sc"><div class="lb">Години тренувань</div><div class="vl">${totalHours}</div></div>
         <div class="sc"><div class="lb">Наступний матч</div><div class="vl" style="font-size:14px">${nextMatch ? 'vs ' + sanitize(nextMatch.opponent) : '—'}</div><div class="sb">${nextMatch ? nextMatch.date : ''}</div></div>
         <div class="sc"><div class="lb">Тренувань</div><div class="vl">${s.trainings.length}</div></div>
       </div>
-      <div class="qa">
+      <div class="qa coach-only">
         <button class="btn btn-p" data-action="new-training">+ Нове тренування</button>
-        
         <button class="btn btn-s" data-view="players">👥 Склад</button>
-        <button class="btn btn-s" data-view="calendar">📅 Календар</button>
-        <button class="btn btn-s" data-view="tactics">📐 Тактика</button>
-        <button class="btn btn-s" data-view="analytics">📈 Аналітика</button>
+        <button class="btn btn-s" data-view="analytics">📊 Статистика</button>
       </div>
-      <div class="ai">
-        <h3>🤖 AI ASSISTANT</h3>
-        <div class="ai-b">
-          <button class="btn btn-s" data-ai="training">Створити тренування</button>
-          <button class="btn btn-s" data-ai="warmup">Створити розминку</button>
-          <button class="btn btn-s" data-ai="tech">Технічна вправа</button>
-          <button class="btn btn-s" data-ai="tactical">Тактична вправа</button>
-          <button class="btn btn-s" data-ai="gk">Для воротарів</button>
-          <button class="btn btn-s" data-ai="post">Після матчу</button>
-          <button class="btn btn-s" data-ai="pre">Перед матчем</button>
-          <button class="btn btn-s" data-ai="optimize">Оптимізувати навантаження</button>
-          <button class="btn btn-s" data-ai="balance">Збалансувати</button>
-          <button class="btn btn-s" data-ai="micro">Аналіз мікроциклу</button>
-        </div>
-        <p class="note-sm">Демо-логіка. Архітектура AIService готова для підключення Grok/OpenAI API.</p>
+      <div class="card"><div class="ct">Останні тренування</div>
+        ${recent.length ? recent.map(t => `<div class="li"><div class="inf"><div class="ti">${sanitize(t.name)}</div><div class="me">${t.date} · ${t.duration}хв · ${t.status}</div></div>
+          <button class="btn btn-s btn-sm coach-only" data-edit-training="${t.id}">Відкрити</button></div>`).join('') : '<div class="es">Немає тренувань</div>'}
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <div class="card"><div class="ct">Останні тренування</div>
-          ${recent.length ? recent.map(t => `<div class="li"><div class="inf"><div class="ti">${sanitize(t.name)}</div><div class="me">${t.date} · ${t.duration}хв · ${t.status}</div></div>
-            <button class="btn btn-s btn-sm" data-edit-training="${t.id}">Відкрити</button></div>`).join('') : '<div class="es">Немає тренувань</div>'}
+      <div class="card coach-only"><div class="ct">Чернетки / Закріплені</div>
+        ${drafts.length ? drafts.map(t => `<div class="li"><div class="inf"><div class="ti">${sanitize(t.name)}</div><div class="me"><span class="badge b-i">${t.status}</span></div></div>
+          <button class="btn btn-s btn-sm" data-edit-training="${t.id}">Відкрити</button></div>`).join('') : '<div class="es">Немає чернеток</div>'}
+      </div>`;
+  },
+
+  /** FIFA + iOS Glass картка гравця */
+  _fifaCard(p, stats) {
+    if (!p) return '';
+    const st = p.status || 'available';
+    const stLabel = ({ available: 'Здоровий', healthy: 'Здоровий', injured: 'Травмований', rehab: 'Відновлення', recovery: 'Відновлення' })[st] || st;
+    const pos = p.position || '—';
+    const ovr = Math.round((Number(p.readiness != null ? p.readiness : p.condition) || 70) * 0.85 + (100 - Math.min(100, (p.load || 0) * 8)) * 0.15);
+    const att = stats.attPct != null ? stats.attPct + '%' : '—';
+    const rpe = stats.avgRpe != null ? stats.avgRpe : '—';
+    const load = stats.load28 != null ? stats.load28 : '—';
+    const cond = p.readiness != null ? p.readiness : (p.condition != null ? p.condition : 80);
+    const initials = ((p.firstName || '')[0] || '') + ((p.lastName || '')[0] || '');
+    const cap = p.isCaptain ? '<span class="fifa-cap">C</span>' : '';
+    const tg = p.telegramUsername ? '@' + sanitize(p.telegramUsername) : '';
+    const posColor = ({ GK: '#f1c40f', CB: '#3498db', LB: '#3498db', RB: '#3498db', DM: '#2ecc71', CM: '#2ecc71', AM: '#2ecc71', LW: '#e74c3c', RW: '#e74c3c', ST: '#e74c3c' })[pos] || '#c8a84b';
+
+    return `
+      <div class="fifa-card glass">
+        <div class="fifa-shine"></div>
+        <div class="fifa-top">
+          <div class="fifa-ovr" style="border-color:${posColor}">
+            <span class="fifa-ovr-num">${ovr}</span>
+            <span class="fifa-pos" style="color:${posColor}">${sanitize(pos)}</span>
+          </div>
+          <div class="fifa-avatar" style="background:linear-gradient(145deg,${posColor}55,${posColor}22)">
+            <span>${sanitize(initials.toUpperCase())}</span>
+            ${cap}
+          </div>
+          <div class="fifa-club">
+            <div class="fifa-club-name">МЕТАЛІСТ</div>
+            <div class="fifa-club-sub">Штутгарт</div>
+          </div>
         </div>
-        <div class="card"><div class="ct">Чернетки / Закріплені</div>
-          ${drafts.length ? drafts.map(t => `<div class="li"><div class="inf"><div class="ti">${sanitize(t.name)}</div><div class="me"><span class="badge b-i">${t.status}</span></div></div>
-            <button class="btn btn-s btn-sm" data-edit-training="${t.id}">Відкрити</button></div>`).join('') : '<div class="es">Немає чернеток</div>'}
+        <div class="fifa-name">
+          <span class="fifa-num">#${p.number || '—'}</span>
+          ${sanitize(p.firstName || '')} <strong>${sanitize(p.lastName || '')}</strong>
         </div>
+        <div class="fifa-meta">${sanitize(stLabel)}${tg ? ' · ' + tg : ''}</div>
+        <div class="fifa-stats">
+          <div class="fifa-stat"><b>${cond}%</b><span>Готовність</span></div>
+          <div class="fifa-stat"><b>${att}</b><span>Відвідування</span></div>
+          <div class="fifa-stat"><b>${rpe}</b><span>Сер. RPE</span></div>
+          <div class="fifa-stat"><b>${load}</b><span>Load 28д</span></div>
+          <div class="fifa-stat"><b>${p.load != null ? p.load : '—'}</b><span>Load</span></div>
+          <div class="fifa-stat"><b>${p.age || '—'}</b><span>Вік</span></div>
+        </div>
+      </div>`;
+  },
+
+  _noPlayerLink() {
+    return '<div class="card"><div class="ct">Профіль не прив\u2019язано</div>'
+      + '<p class="note-sm">Попросіть тренера вказати ваш Telegram-нік в анкеті гравця.</p></div>';
+  },
+
+  _playerStats(playerId) {
+    const s = Store.get();
+    return {
+      attPct: LoadModel.attendanceRate(s.trainings, playerId),
+      avgRpe: LoadModel.avgPlayerRpe(s.trainings, playerId),
+      load28: LoadModel.playerLoad(s.trainings, playerId, 28)
+    };
+  },
+
+  _playerHome() {
+    const s = Store.get();
+    const me = AuthManager.getLinkedPlayer();
+    const stats = me ? this._playerStats(me.id) : {};
+    const next = s.trainings.filter(t => t.status === 'planned' && t.date >= today()).sort((a, b) => a.date.localeCompare(b.date))[0];
+    const nextMatch = s.matches.filter(m => m.date >= today()).sort((a, b) => a.date.localeCompare(b.date))[0];
+    const teamAvail = s.players.filter(p => p.status === 'available' || p.status === 'healthy' || !p.status).length;
+    const recentAtt = (s.trainings || []).filter(t => t.attendance && me && t.attendance[me.id])
+      .sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 6);
+
+    return `
+      <div class="st">Команда · МЕТАЛІСТ ШТУТГАРТ</div>
+      ${me ? this._fifaCard(me, stats) : this._noPlayerLink()}
+      <div class="dg player-team-stats">
+        <div class="sc"><div class="lb">Наступне тренування</div><div class="vl" style="font-size:13px">${next ? sanitize(next.name) : '—'}</div><div class="sb">${next ? next.date + ' ' + (next.time || '') : ''}</div></div>
+        <div class="sc"><div class="lb">Наступний матч</div><div class="vl" style="font-size:13px">${nextMatch ? 'vs ' + sanitize(nextMatch.opponent) : '—'}</div><div class="sb">${nextMatch ? nextMatch.date : ''}</div></div>
+        <div class="sc"><div class="lb">У строю</div><div class="vl">${teamAvail}</div><div class="sb">з ${s.players.length}</div></div>
+      </div>
+      <div class="card"><div class="ct">Мої останні відвідування</div>
+        ${recentAtt.length ? recentAtt.map(t => {
+          const a = t.attendance[me.id];
+          const ok = a && a.present;
+          return `<div class="li"><div class="inf"><div class="ti">${sanitize(t.name)}</div>
+            <div class="me">${t.date} · ${ok ? '✓ був' : '✗ відсутній'}${ok && a.intensity != null ? ' · RPE ' + a.intensity : ''}</div></div>
+            <span class="badge ${ok ? 'b-ok' : 'b-d'}">${ok ? 'OK' : '—'}</span></div>`;
+        }).join('') : '<div class="es">Ще немає відміток відвідування</div>'}
+      </div>
+      <div class="card"><div class="ct">Склад команди</div>
+        <div class="team-mini-list">${s.players.slice().sort((a,b)=>(a.number||0)-(b.number||0)).map(p => {
+          const st = p.status || 'available';
+          const bc = (st === 'injured') ? 'inj' : ((st === 'rehab' || st === 'recovery') ? 'reh' : '');
+          const meCls = me && p.id === me.id ? ' me' : '';
+          return `<div class="team-mini${meCls} ${bc}"><span class="tm-num">#${p.number||''}</span>
+            <span class="tm-name">${sanitize(p.lastName||'')} ${sanitize((p.firstName||'')[0]||'')}</span>
+            <span class="tm-pos">${sanitize(p.position||'')}</span></div>`;
+        }).join('')}</div>
+      </div>`;
+  },
+
+  _guestHome() {
+    const s = Store.get();
+    const avail = s.players.filter(p => p.status === 'available' || p.status === 'healthy' || !p.status).length;
+    const next = s.trainings.filter(t => t.status === 'planned' && t.date >= today()).sort((a, b) => a.date.localeCompare(b.date))[0];
+    const nextMatch = s.matches.filter(m => m.date >= today()).sort((a, b) => a.date.localeCompare(b.date))[0];
+    return `
+      <div class="st">МЕТАЛІСТ ШТУТГАРТ</div>
+      <div class="card glass guest-hero">
+        <div class="guest-title">Офіційний клубний простір</div>
+        <p class="note-sm">Ви увійшли як <strong>гість</strong>. Повна статистика доступна гравцям складу та тренеру.</p>
+      </div>
+      <div class="dg">
+        <div class="sc"><div class="lb">Гравців у складі</div><div class="vl">${s.players.length}</div></div>
+        <div class="sc"><div class="lb">У строю</div><div class="vl">${avail}</div></div>
+        <div class="sc"><div class="lb">Наступне тренування</div><div class="vl" style="font-size:13px">${next ? sanitize(next.name) : '—'}</div><div class="sb">${next ? next.date : ''}</div></div>
+        <div class="sc"><div class="lb">Наступний матч</div><div class="vl" style="font-size:13px">${nextMatch ? 'vs ' + sanitize(nextMatch.opponent) : '—'}</div><div class="sb">${nextMatch ? nextMatch.date : ''}</div></div>
+      </div>
+      <div class="card"><div class="ct">Склад (скорочено)</div>
+        <div class="team-mini-list">${s.players.slice().sort((a,b)=>(a.number||0)-(b.number||0)).map(p =>
+          `<div class="team-mini"><span class="tm-num">#${p.number||''}</span>
+            <span class="tm-name">${sanitize(p.lastName||'')}</span>
+            <span class="tm-pos">${sanitize(p.position||'')}</span></div>`
+        ).join('')}</div>
       </div>`;
   },
 
@@ -99,7 +216,7 @@ const Views = {
   players() {
     const s = Store.get();
     return `
-      <div class="st">Склад команди <button class="btn btn-p btn-sm" data-action="new-player">+ Гравець</button></div>
+      <div class="st">Склад команди <button class="btn btn-p btn-sm coach-only" data-action="new-player">+ Гравець</button></div>
       <div class="fb">
         <input type="search" id="plSearch" placeholder="Пошук..." data-filter="players">
         <select id="plPos" data-filter="players"><option value="">Всі позиції</option>${['GK','CB','LB','RB','DM','CM','AM','LW','RW','ST'].map(p=>`<option>${p}</option>`).join('')}</select>

@@ -40,18 +40,65 @@ const BoardEngine = {
   },
 
 
+  /** Скинути «залиплі» жести — головний захист від зависання дошки */
+  resetInteractionState(reason) {
+    try {
+      this.pointers.clear();
+      this.dragObj = null;
+      this.activePointerId = null;
+      this.drawing = false;
+      this.startPos = null;
+      this.panStart = null;
+      this.lastPinchDist = 0;
+      this._freehand = null;
+      this.benchDragId = null;
+      if (this.benchGhost && this.benchGhost.parentNode) {
+        try { this.benchGhost.parentNode.removeChild(this.benchGhost); } catch (_) {}
+      }
+      this.benchGhost = null;
+      document.querySelectorAll('.pt.dragging, .ball.dragging').forEach(el => el.classList.remove('dragging'));
+      const panel = document.getElementById('benchPanel');
+      if (panel) panel.classList.remove('drop-target');
+    } catch (_) {}
+    if (reason) try { console.debug('[board] resetInteraction', reason); } catch (_) {}
+  },
+
   init() {
     const c = document.getElementById('fieldContainer');
     if (!c) return;
+    if (c.dataset.beBound === '1') {
+      // повторна ініціалізація — лише скинути стан, не дублювати listeners
+      this.resetInteractionState('reinit');
+      this.applyCamera();
+      return;
+    }
+    c.dataset.beBound = '1';
     c.style.touchAction = 'none';
     c.style.userSelect = 'none';
+    c.style.webkitUserSelect = 'none';
     // Unified Pointer Events — primary interaction path
     c.addEventListener('pointerdown', e => this.onPointerDown(e), { passive: false });
     c.addEventListener('pointermove', e => this.onPointerMove(e), { passive: false });
     c.addEventListener('pointerup', e => this.onPointerUp(e));
     c.addEventListener('pointercancel', e => this.onPointerUp(e));
+    c.addEventListener('lostpointercapture', e => this.onPointerUp(e));
     c.addEventListener('wheel', e => this.onWheel(e), { passive: false });
     c.addEventListener('contextmenu', e => e.preventDefault());
+    // Глобальна сітка безпеки: pointerup поза контейнером / втрата фокусу
+    if (!this._globalPointerBound) {
+      this._globalPointerBound = true;
+      const safeUp = (e) => {
+        if (this.pointers.size || this.dragObj || this.panStart || this.drawing || this.benchDragId) {
+          this.onPointerUp(e);
+        }
+      };
+      document.addEventListener('pointerup', safeUp, true);
+      document.addEventListener('pointercancel', safeUp, true);
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) this.resetInteractionState('hidden');
+      });
+      window.addEventListener('blur', () => this.resetInteractionState('blur'));
+    }
     this._bindBenchPanelOnce();
     // Resize
     if (window.ResizeObserver) {
@@ -65,6 +112,7 @@ const BoardEngine = {
     }
     // Space for pan
     document.addEventListener('keydown', e => {
+      if (e.code === 'Escape') { this.resetInteractionState('escape'); this.applyCamera(); return; }
       if (e.code === 'Space' && !isInput(e.target)) { this.spaceHeld = true; e.preventDefault(); }
     });
     document.addEventListener('keyup', e => {
@@ -386,9 +434,18 @@ const BoardEngine = {
       return;
     }
 
-    if (['cone','mannequin','pole','ladder','minigoal','hoop','flag','bib'].includes(tool)) {
+    const invTools = ['cone','mannequin','wall','pole','ladder','minigoal','hoop','flag','bib','chip','chipLarge','markSquare','markDot'];
+    if (invTools.includes(tool)) {
       const ep = this.clampWorld(world.x, world.y);
-      s.activeBoard.objects.push({ id: uid(), type: tool, x: ep.x, y: ep.y, rotation: 0, locked: false, visible: true });
+      const col = s.activeBoard.drawColor || undefined;
+      const obj = {
+        id: uid(), type: tool, x: ep.x, y: ep.y,
+        rotation: 0, locked: false, visible: true
+      };
+      if (col) { obj.color = col; obj.fill = col; }
+      // markSquare: default small square footprint
+      if (tool === 'markSquare') { obj.w = 0.04; obj.h = 0.04; }
+      s.activeBoard.objects.push(obj);
       this.pushHistory();
       this.render();
       return;
@@ -448,7 +505,10 @@ const BoardEngine = {
 
   /* ── POINTER MOVE — ZERO LAG path ── */
   onPointerMove(e) {
-    e.preventDefault();
+    const interacting = this.dragObj || this.panStart || this.drawing || this.pointers.size >= 2 || this.benchDragId;
+    if (interacting) {
+      try { e.preventDefault(); } catch (_) {}
+    }
     if (this.pointers.has(e.pointerId)) {
       this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     }
@@ -457,9 +517,11 @@ const BoardEngine = {
     if (this.pointers.size >= 2) {
       const pts = [...this.pointers.values()];
       const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
-      if (this.lastPinchDist > 0) {
+      if (this.lastPinchDist > 8) {
         const scale = dist / this.lastPinchDist;
-        this.camera.zoom = clamp(this.camera.zoom * scale, 0.5, 4);
+        if (Number.isFinite(scale) && scale > 0.5 && scale < 2) {
+          this.camera.zoom = clamp(this.camera.zoom * scale, 0.5, 4);
+        }
       }
       this.lastPinchDist = dist;
       if (this.panStart) {
@@ -472,6 +534,8 @@ const BoardEngine = {
         this.camera.x = this.panStart.camX - dx;
         this.camera.y = this.panStart.camY - dy;
       }
+      this.clampPan();
+      this.applyCamera();
       this.renderTokens();
       this.renderDrawings();
       this.updateZoomIndicator();
@@ -523,33 +587,45 @@ const BoardEngine = {
 
   /* ── POINTER UP ── */
   onPointerUp(e) {
-    this.pointers.delete(e.pointerId);
+    try {
+      if (e && e.pointerId != null) this.pointers.delete(e.pointerId);
+    } catch (_) {}
+    // Захист від «мертвих» pointerId у Map
+    if (this.pointers.size > 2) {
+      this.pointers.clear();
+      this.lastPinchDist = 0;
+    }
     if (this.pointers.size < 2) {
       this.lastPinchDist = 0;
-      this.panStart = null;
+      // panStart для двопальцевого pan скидаємо; однопальцевий pan — нижче
+      if (!this.panStart || this.panStart.mx != null) this.panStart = null;
     }
 
     // Commit drag
     if (this.dragObj) {
       const dragged = this.dragObj;
-      const el = document.querySelector(`[data-id="${dragged.id}"]`);
+      const el = document.querySelector('[data-id="' + dragged.id + '"]');
       if (el) {
         el.classList.remove('dragging');
-        try { el.releasePointerCapture(e.pointerId); } catch (_) {}
+        try { if (e && e.pointerId != null) el.releasePointerCapture(e.pointerId); } catch (_) {}
       }
-      // Якщо відпустили над панеллю ЗАПАС → на лавку
-      const panel = document.getElementById('benchPanel');
-      const under = document.elementFromPoint(e.clientX, e.clientY);
-      if (panel && under && (panel === under || panel.contains(under))) {
-        this.dragObj = null;
-        this.activePointerId = null;
+      // Якщо відпустили над панеллю ЗАПАС → на лавку (вільний перенос)
+      let demoted = false;
+      try {
+        const panel = document.getElementById('benchPanel');
+        const under = (e && e.clientX != null) ? document.elementFromPoint(e.clientX, e.clientY) : null;
+        if (panel && under && (panel === under || panel.contains(under))) {
+          demoted = true;
+        }
+      } catch (_) {}
+      this.dragObj = null;
+      this.activePointerId = null;
+      if (demoted) {
         this.demoteToBench(dragged.id);
         return;
       }
-      this.dragObj = null;
-      this.activePointerId = null;
-      this.pushHistory(); try { StorageManager.save(); } catch (_) {}
-    //;
+      this.pushHistory();
+      try { StorageManager.save(); } catch (_) {}
       return;
     }
 
@@ -646,7 +722,10 @@ const BoardEngine = {
     e.preventDefault();
     const delta = e.deltaY > 0 ? 0.9 : 1.1;
     this.camera.zoom = clamp(this.camera.zoom * delta, 0.5, 4);
-    this.render();
+    this.clampPan();
+    this.applyCamera();
+    this.renderTokens();
+    this.renderDrawings();
     this.updateZoomIndicator();
   },
 
@@ -798,18 +877,23 @@ const BoardEngine = {
       Toast.show('Суперник: схема ' + name + ' (дзеркало)', 'ok');
       return;
     }
-    // Своя команда: рівно 11 на полі за схемою, УСІ інші — у панель ЗАПАС
+    // Своя команда: 11 основи на поле; резерв / травма / відновлення — на лавку
     s.activeBoard.objects = s.activeBoard.objects.filter(o => !(o.type === 'player' && o.team !== 'opp'));
     const chipColor = s.activeBoard.drawColor || null;
     const usedIds = new Set();
-    // 1) Основа — позиції схеми (макс 11)
+    const rosterAll = (s.players || []).slice();
+    const isInj = (pl) => pl && (pl.status === 'injured');
+    const isRehab = (pl) => pl && (pl.status === 'rehab' || pl.status === 'recovery');
+    const isRes = (pl) => pl && pl.group === 'reserve';
+    const fieldPool = rosterAll.filter(pl => !isRes(pl) && !isInj(pl) && !isRehab(pl));
     scheme.slice(0, 11).forEach(([num, x, y]) => {
       const p = this.clampWorld(x, y);
-      let roster = (s.players || []).find(pl => pl.number === num && pl.group !== 'reserve');
-      if (!roster) roster = (s.players || []).find(pl => pl.number === num);
+      let roster = fieldPool.find(pl => pl.number === num && !usedIds.has(pl.id));
+      if (!roster) roster = fieldPool.find(pl => !usedIds.has(pl.id));
       if (roster) usedIds.add(roster.id);
       s.activeBoard.objects.push({
-        id: uid(), type: 'player', x: p.x, y: p.y, number: num,
+        id: uid(), type: 'player', x: p.x, y: p.y,
+        number: roster ? roster.number : num,
         label: roster ? (roster.lastName || '') : '',
         team: 'own',
         playerId: roster ? roster.id : null,
@@ -824,12 +908,14 @@ const BoardEngine = {
         rotation: 0, locked: false, visible: true
       });
     });
-    // 2) Усі інші зі складу → лавка (окрема панель, не на полі)
-    const benchList = (s.players || []).filter(pl => !usedIds.has(pl.id));
+    const benchList = rosterAll.filter(pl => !usedIds.has(pl.id));
+    benchList.sort((a, b) => {
+      const rank = (pl) => isInj(pl) ? 3 : isRehab(pl) ? 2 : isRes(pl) ? 1 : 0;
+      return rank(a) - rank(b) || (a.number || 0) - (b.number || 0);
+    });
     benchList.forEach((roster) => {
       s.activeBoard.objects.push({
-        id: uid(), type: 'player',
-        x: 0, y: 0,
+        id: uid(), type: 'player', x: 0, y: 0,
         number: roster.number,
         label: roster.lastName || '',
         team: 'own',
@@ -847,7 +933,10 @@ const BoardEngine = {
     });
     this.pushHistory();
     this.render();
-    Toast.show('Основа 11 · Запас ' + benchList.length + (chipColor ? ' · колір' : ''), 'ok');
+    const nInj = benchList.filter(isInj).length;
+    const nReh = benchList.filter(isRehab).length;
+    const nRes = benchList.filter(isRes).length;
+    Toast.show('Основа 11 · Лавка ' + benchList.length + (nRes ? ' · рез. ' + nRes : '') + (nInj + nReh ? ' · мед. ' + (nInj + nReh) : ''), 'ok');
   },
 
   saveBoard() {
@@ -893,7 +982,7 @@ const BoardEngine = {
   },
   /** Усі рухомі об'єкти на дошці */
   _movableTypes() {
-    return ['player', 'opponent', 'ball', 'cone', 'mannequin', 'pole', 'ladder', 'minigoal', 'hoop', 'flag', 'bib'];
+    return ['player', 'opponent', 'ball', 'cone', 'mannequin', 'wall', 'pole', 'ladder', 'minigoal', 'hoop', 'flag', 'bib', 'chip', 'chipLarge', 'markSquare', 'markDot'];
   },
 
   _pointInZone(px, py, z) {
@@ -1264,12 +1353,15 @@ const BoardEngine = {
   tokenMetrics() {
     const c = document.getElementById('fieldContainer');
     const h = (c && c.clientHeight) || 600;
-    // діаметр відносно розмітки поля (zoom масштабує весь stage)
-    const player = Math.max(14, Math.min(48, h * 0.028));
-    const ball = Math.max(8, player * 0.42);
-    const cone = Math.max(10, player * 0.55);
-    const equip = Math.max(12, player * 0.7);
-    return { player, ball, cone, equip, font: Math.max(8, player * 0.32) };
+    // Реалістичний масштаб: гравець ~1.4% висоти газону (раніше було ~2.8% — вдвічі більше)
+    const player = Math.max(10, Math.min(28, h * 0.014));
+    const ball = Math.max(6, player * 0.38);
+    const cone = Math.max(7, player * 0.48);
+    const equip = Math.max(8, player * 0.55);
+    const chip = Math.max(6, player * 0.42);       // мала фішка-маркер
+    const chipLg = Math.max(9, player * 0.72);     // велика фішка
+    const mark = Math.max(5, player * 0.28);       // точкова розмітка
+    return { player, ball, cone, equip, chip, chipLg, mark, font: Math.max(7, player * 0.36) };
   },
 
 
@@ -1425,28 +1517,40 @@ const BoardEngine = {
     const bench = (s.activeBoard.objects || []).filter(o => o.onBench && (o.type === 'player' || o.team === 'own'));
     const pending = this.pendingFromBenchId;
     if (!bench.length) {
-      list.innerHTML = '<div class="bench-empty">Немає запасних<br><span class="bench-hint">Перетягніть фішку з поля сюди</span></div>';
+      list.innerHTML = '<div class="bench-empty">Лавка порожня<br><span class="bench-hint">Перетягніть фішку з поля сюди</span></div>';
       return;
     }
-    list.innerHTML = bench.map(o => {
+    const chipHtml = (o) => {
       const pl = o.playerId ? (s.players || []).find(p => p.id === o.playerId) : null;
       const readiness = o.readiness != null ? o.readiness : (pl && (pl.readiness != null ? pl.readiness : pl.condition)) || 70;
-      const loadVal = o.load != null ? o.load : (pl && pl.load != null ? pl.load : 0);
       const ringC = readiness >= 80 ? '#2ecc71' : readiness >= 50 ? '#f1c40f' : '#e74c3c';
-      const loadPct = Math.max(0, Math.min(100, (loadVal / 10) * 100));
       const bg = o.chipColor || o.color || '';
       const st = o.status || (pl && pl.status) || '';
-      const inj = st === 'injured' ? '<span class="bench-tag inj">✚</span>' : '';
+      const grp = (pl && pl.group) || '';
+      let tag = '';
+      if (st === 'injured') tag = '<span class="bench-tag inj">✚</span>';
+      else if (st === 'rehab' || st === 'recovery') tag = '<span class="bench-tag reh">↻</span>';
+      else if (grp === 'reserve') tag = '<span class="bench-tag res">R</span>';
       const bgStyle = bg ? 'background:' + bg : '';
       const on = (pending === o.id || s.activeBoard.selectedId === o.id) ? ' on' : '';
-      return '<div class="bench-chip' + on + '" data-id="' + o.id + '" title="Перетягніть на поле або тап → тап по полю">' +
+      return '<div class="bench-chip' + on + '" data-id="' + o.id + '" title="Перетягніть на поле">' +
         '<div class="bench-avatar" style="' + bgStyle + ';box-shadow:0 0 0 2px ' + ringC + '">' +
         '<span class="bench-num">' + (o.number || '') + '</span></div>' +
         '<div class="bench-meta"><span class="bench-pos">' + (o.position || (pl && pl.position) || '') + '</span> ' +
-        '<span class="bench-name">' + (o.label || '') + '</span>' + inj + '</div>' +
-        '<div class="bench-load" title="Load"><i style="width:' + loadPct + '%"></i></div>' +
-        '<button type="button" class="bench-to-field" data-bench-to-field="' + o.id + '" title="Вивести на поле">↗</button></div>';
-    }).join('');
+        '<span class="bench-name">' + (o.label || '') + '</span>' + tag + '</div></div>';
+    };
+    const stOf = (o) => o.status || ((s.players || []).find(p => p.id === o.playerId) || {}).status || '';
+    const grOf = (o) => ((s.players || []).find(p => p.id === o.playerId) || {}).group || '';
+    const main = bench.filter(o => stOf(o) !== 'injured' && stOf(o) !== 'rehab' && stOf(o) !== 'recovery' && grOf(o) !== 'reserve');
+    const res = bench.filter(o => grOf(o) === 'reserve' && stOf(o) !== 'injured' && stOf(o) !== 'rehab' && stOf(o) !== 'recovery');
+    const reh = bench.filter(o => stOf(o) === 'rehab' || stOf(o) === 'recovery');
+    const inj = bench.filter(o => stOf(o) === 'injured');
+    let html = '';
+    if (main.length) html += '<div class="bench-sec">Запас</div>' + main.map(chipHtml).join('');
+    if (res.length) html += '<div class="bench-sec">Резерв</div>' + res.map(chipHtml).join('');
+    if (reh.length) html += '<div class="bench-sec">Відновлення</div>' + reh.map(chipHtml).join('');
+    if (inj.length) html += '<div class="bench-sec inj-sec">Травма</div>' + inj.map(chipHtml).join('');
+    list.innerHTML = html;
   },
 
 
@@ -1471,7 +1575,7 @@ const BoardEngine = {
     layer.style.setProperty('--tok', m.player + 'px');
     layer.style.setProperty('--tok-font', m.font + 'px');
     layer.style.setProperty('--ball-sz', m.ball + 'px');
-    const equipTypes = ['cone','mannequin','pole','ladder','minigoal','hoop','flag','bib'];
+    const equipTypes = ['cone','mannequin','wall','pole','ladder','minigoal','hoop','flag','bib','chip','chipLarge','markSquare','markDot'];
     const objs = s.activeBoard.objects.filter(o =>
       !o.onBench && (o.type === 'player' || o.type === 'opponent' || o.type === 'ball' || equipTypes.includes(o.type))
     );
@@ -1485,12 +1589,39 @@ const BoardEngine = {
         return;
       }
       if (o.type === 'cone') {
-        const bw = m.cone * 0.55, bh = m.cone;
-        html += `<div class="eq cone" data-id="${o.id}" style="${L};width:0;height:0;border-left:${bw}px solid transparent;border-right:${bw}px solid transparent;border-bottom:${bh}px solid #e67e22"></div>`;
+        const col = o.color || o.fill || '#e67e22';
+        const bw = m.cone * 0.5, bh = m.cone;
+        html += `<div class="eq cone" data-id="${o.id}" style="${L};width:0;height:0;border-left:${bw}px solid transparent;border-right:${bw}px solid transparent;border-bottom:${bh}px solid ${col}"></div>`;
         return;
       }
-      if (o.type === 'mannequin') {
-        html += `<div class="eq mannequin" data-id="${o.id}" style="${L};width:${m.equip * 0.55}px;height:${m.equip}px;background:#95a5a6;border-radius:3px 3px 0 0"></div>`;
+      if (o.type === 'chip') {
+        const col = o.color || o.fill || '#f1c40f';
+        const sz = m.chip;
+        html += `<div class="eq chip" data-id="${o.id}" style="${L};width:${sz}px;height:${sz}px;background:${col};border-radius:50%;border:1.5px solid rgba(255,255,255,.55);box-shadow:0 1px 3px rgba(0,0,0,.4)" title="Фішка"></div>`;
+        return;
+      }
+      if (o.type === 'chipLarge') {
+        const col = o.color || o.fill || '#3498db';
+        const sz = m.chipLg;
+        html += `<div class="eq chip-lg" data-id="${o.id}" style="${L};width:${sz}px;height:${sz}px;background:${col};border-radius:50%;border:2px solid rgba(255,255,255,.5);box-shadow:0 2px 4px rgba(0,0,0,.35)" title="Велика фішка"></div>`;
+        return;
+      }
+      if (o.type === 'markDot') {
+        const col = o.color || o.fill || '#ecf0f1';
+        const sz = m.mark;
+        html += `<div class="eq mark-dot" data-id="${o.id}" style="${L};width:${sz}px;height:${sz}px;background:${col};border-radius:50%;box-shadow:0 0 0 1px rgba(0,0,0,.3)" title="Точка"></div>`;
+        return;
+      }
+      if (o.type === 'markSquare') {
+        const col = o.color || o.fill || 'rgba(241,196,15,0.35)';
+        const border = o.color || '#f1c40f';
+        const sz = m.chipLg * 1.1;
+        html += `<div class="eq mark-sq" data-id="${o.id}" style="${L};width:${sz}px;height:${sz}px;background:${col};border:1.5px solid ${border};border-radius:2px" title="Квадрат"></div>`;
+        return;
+      }
+      if (o.type === 'wall' || o.type === 'mannequin') {
+        const col = o.color || o.fill || '#95a5a6';
+        html += `<div class="eq wall" data-id="${o.id}" style="${L};width:${m.equip * 0.5}px;height:${m.equip * 0.95}px;background:${col};border-radius:3px 3px 2px 2px;border:1px solid rgba(0,0,0,.25)" title="Стінка / манекен"></div>`;
         return;
       }
       if (o.type === 'pole') {
@@ -1900,7 +2031,6 @@ const BoardEngine = {
         <button type="button" class="tb" data-action="zoom-out" title="Зменшити">−</button>
         <button type="button" class="tb" data-action="zoom-fit" title="Вписати поле">⊡</button>
         <button type="button" class="tb" data-action="zoom-in" title="Збільшити">+</button>
-        <button type="button" class="tb" data-action="to-bench" title="Виділеного на лавку">⬇ Лавка</button>
         <button class="tb" data-action="toggle-present" title="Режим показу">▶ Показ</button>
         <span class="btb-spacer"></span>
         <button class="tb" data-action="board-undo" title="Скасувати">↩</button>
@@ -1943,13 +2073,21 @@ const BoardEngine = {
             <button type="button" class="tb color-swatch ${drawCol==='#1a73e8'?'on':''}" data-action="set-draw-color" data-color="#1a73e8" style="background:#1a73e8" title="Синій клуб"></button>
           </span>
         </div>
+        <div class="tg inv-group" title="Інвентар">
+          <button class="tb ${tool==='chip'?'on':''}" data-tool="chip" title="Фішка">●</button>
+          <button class="tb ${tool==='chipLarge'?'on':''}" data-tool="chipLarge" title="Велика фішка">⬤</button>
+          <button class="tb ${tool==='cone'?'on':''}" data-tool="cone" title="Конус">▲</button>
+          <button class="tb ${tool==='wall'?'on':''}" data-tool="wall" title="Стінка / манекен">▮</button>
+          <button class="tb ${tool==='markDot'?'on':''}" data-tool="markDot" title="Точка розмітки">·</button>
+          <button class="tb ${tool==='markSquare'?'on':''}" data-tool="markSquare" title="Квадрат розмітки">▢</button>
+          <button class="tb ${tool==='pole'?'on':''}" data-tool="pole" title="Стійка">│</button>
+          <button class="tb ${tool==='minigoal'?'on':''}" data-tool="minigoal" title="Міні-ворота">⊓</button>
+        </div>
         <div class="tg">
-          <button class="tb ${tool==='zone'?'on':''}" data-tool="zone" title="Зона">▢</button>
+          <button class="tb ${tool==='zone'?'on':''}" data-tool="zone" title="Зона">⬚</button>
           <button class="tb ${tool==='circle'?'on':''}" data-tool="circle" title="Коло">○</button>
           <button class="tb ${tool==='polygon'?'on':''}" data-tool="polygon" title="Багатокутник">⬠</button>
-          <button class="tb ${tool==='freehand'?'on':''}" data-tool="freehand" title="Вільна">✎</button>
-          <button class="tb ${tool==='cone'?'on':''}" data-tool="cone" title="Конус">△</button>
-          <button class="tb ${tool==='mannequin'?'on':''}" data-tool="mannequin" title="Манекен">▣</button>
+          <button class="tb ${tool==='freehand'?'on':''}" data-tool="freehand" title="Вільна лінія">✎</button>
           <button class="tb ${tool==='text'?'on':''}" data-tool="text" title="Текст">T</button>
         </div>
         <div class="tg">
