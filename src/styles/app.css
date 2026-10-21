@@ -1119,8 +1119,8 @@ body.mode-board-focus #boardToolbar.btb {
 body.mode-board-focus #playersLayer .pt,
 body.mode-board-focus #playersLayer .ball,
 body.mode-board-focus #playersLayer .eq {
-  max-width: 10px !important;
-  max-height: 14px !important;
+  max-width: 20px !important;
+  max-height: 24px !important;
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
@@ -3932,20 +3932,20 @@ body.board-only-mode #boardToolbarBottom.btb-bottom {
 }
 #playersLayer .eq.inv-chip-lg,
 #playersLayer .eq.inv-sq {
-  max-width: 11px !important;
-  max-height: 11px !important;
+  max-width: 22px !important;
+  max-height: 22px !important;
 }
 #playersLayer .eq.inv-wall {
-  max-width: 8px !important;
-  max-height: 14px !important;
+  max-width: 14px !important;
+  max-height: 22px !important;
 }
 #playersLayer .eq.inv-goal {
-  max-width: 16px !important;
-  max-height: 12px !important;
+  max-width: 28px !important;
+  max-height: 20px !important;
 }
 #playersLayer .eq.inv-ladder {
-  max-width: 14px !important;
-  max-height: 8px !important;
+  max-width: 24px !important;
+  max-height: 12px !important;
 }
 #playersLayer .eq svg {
   display: block;

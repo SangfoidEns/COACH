@@ -1355,22 +1355,21 @@ const BoardEngine = {
   tokenMetrics() {
     const c = document.getElementById('fieldContainer');
     const h = (c && c.clientHeight) || 600;
-    // Фішки гравців — стабільний читабельний розмір
-    const player = Math.max(28, Math.min(56, h * 0.044));
-    const ball = Math.max(8, Math.min(16, player * 0.28));
-    // Інвентар ~у 3 рази менший (орієнтир 6–8% від фішки гравця)
-    const inv = Math.max(3, Math.min(8, player * 0.07));
-    const cone = inv;
+    // Фішки гравців — як раніше (до збільшення ×2)
+    const player = Math.max(18, Math.min(34, h * 0.024));
+    const ball = Math.max(8, Math.min(14, player * 0.38));
+    // Інвентар ×2 від «крихітного» варіанту, чітко менший за фішку
+    const inv = Math.max(8, Math.min(16, player * 0.42));
+    const cone = Math.max(9, inv * 1.05);
     const equip = inv;
-    const chip = Math.max(3, inv * 0.85);
-    const chipLg = Math.max(4, inv * 1.15);
-    const mark = Math.max(2, inv * 0.55);
-    const markSq = Math.max(3, inv * 0.9);
+    const chip = Math.max(8, inv * 0.95);
+    const chipLg = Math.max(10, inv * 1.2);
+    const mark = Math.max(5, inv * 0.55);
+    const markSq = Math.max(8, inv * 0.95);
     return {
       player, ball, cone, equip, chip, chipLg, mark, markSq, inv,
-      font: Math.max(11, Math.min(18, player * 0.36)),
-      // Зовнішній радіус шкали ≈ вдвічі більший за попередній
-      ringPad: Math.max(28, Math.round(player * 1.1))
+      font: Math.max(9, Math.min(14, player * 0.36)),
+      ringPad: Math.max(10, Math.round(player * 0.45))
     };
   },
 
@@ -1749,7 +1748,7 @@ const BoardEngine = {
       const loadCol = loadPct >= 0.7 ? '#e74c3c' : loadPct >= 0.4 ? '#f1c40f' : '#3498db';
       // Без білої обводки — лише кольорова шкала показника (вдвічі більша за фішку)
       const ringShadow = `box-shadow:0 3px 8px rgba(0,0,0,.45);border:none !important`;
-      const ringSz = Math.round(m.player + (m.ringPad || 28) * 2);
+      const ringSz = Math.round(m.player + (m.ringPad || 10) * 2);
       const circ = 2 * Math.PI * 20; // r=20 у viewBox 52
       const loadArc = (loadNum != null && !isNaN(loadNum))
         ? `<svg class="pt-load-ring" viewBox="0 0 52 52" aria-hidden="true" style="width:${ringSz}px;height:${ringSz}px"><circle cx="26" cy="26" r="20" fill="none" stroke="rgba(0,0,0,0.35)" stroke-width="4.5"/><circle cx="26" cy="26" r="20" fill="none" stroke="${loadCol}" stroke-width="4.5" stroke-dasharray="${loadPct * circ} ${circ}" stroke-linecap="round" transform="rotate(-90 26 26)"/></svg>`
