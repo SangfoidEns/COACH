@@ -1878,10 +1878,18 @@ body.role-player .auth-badge {
   border-color: rgba(52, 152, 219, 0.4);
 }
 body.role-player [data-action="reset-all"],
-body.role-player [data-action="import-trigger"],
 body.role-player .sb-export {
   opacity: 0.45;
   pointer-events: none;
+}
+/* Імпорт JSON для гравця — ОБОВ'ЯЗКОВО активний */
+body.role-player [data-action="import-trigger"],
+body.role-player [data-io="import"],
+body.role-guest [data-action="import-trigger"],
+body.role-guest [data-io="import"] {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  cursor: pointer !important;
 }
 
 /* Логотип = вхід на дошку */
@@ -4382,3 +4390,422 @@ body.mode-board-focus #boardToolbarBottom {
 .compare-name { font-weight: 700; margin-bottom: 6px; font-size: 13px; }
 .compare-svg { display: block; margin-top: 4px; }
 .compare-card select { width: 100%; max-width: 320px; }
+
+/* ═══ Telegram-style training rows + action sheet ═══ */
+.tg-row.card-training {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  margin: 0 0 2px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.06);
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+  transition: background 0.15s ease, transform 0.12s ease;
+}
+.tg-row.card-training:active,
+.tg-row.card-training.tg-row-holding {
+  background: rgba(255,255,255,0.10);
+  transform: scale(0.985);
+}
+.tg-row.is-cancelled {
+  opacity: 0.55;
+}
+.tg-row.is-cancelled .tg-row-title {
+  text-decoration: line-through;
+}
+.tg-row-main { flex: 1; min-width: 0; }
+.tg-row-title {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--text, #fff);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tg-row-sub {
+  font-size: 12px;
+  color: var(--muted, #9aa4b2);
+  margin-top: 3px;
+}
+.tg-row-preview {
+  font-size: 11px;
+  color: var(--muted, #9aa4b2);
+  margin-top: 4px;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.tg-row-chevron {
+  color: var(--muted, #9aa4b2);
+  font-size: 22px;
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+
+.tg-sheet-backdrop {
+  position: fixed !important;
+  inset: 0 !important;
+  background: rgba(0, 0, 0, 0.72) !important;
+  z-index: 200000 !important;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+  display: flex !important;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0 10px max(10px, env(safe-area-inset-bottom, 10px));
+  isolation: isolate;
+}
+.tg-sheet-backdrop.show {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+/* .tg-sheet — клас у JS; .tg-action-sheet — legacy alias */
+.tg-sheet,
+.tg-action-sheet {
+  position: relative !important;
+  left: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  width: 100% !important;
+  max-width: 480px;
+  z-index: 200001 !important;
+  border-radius: 16px;
+  padding: 8px 10px 12px;
+  /* суцільний фон — без просвічування списку під меню */
+  background: #1c2330 !important;
+  background: linear-gradient(180deg, #222a38 0%, #161c28 100%) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: 1px solid rgba(255,255,255,0.14);
+  box-shadow: 0 16px 48px rgba(0,0,0,0.65);
+  transform: translateY(24px);
+  opacity: 0.96;
+  transition: transform 0.25s cubic-bezier(0.2, 0.9, 0.2, 1), opacity 0.2s ease;
+  max-height: min(72vh, 520px);
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  pointer-events: auto !important;
+}
+.tg-sheet-backdrop.show .tg-sheet,
+.tg-sheet-backdrop.show .tg-action-sheet,
+.tg-action-sheet.show {
+  transform: translateY(0);
+  opacity: 1;
+}
+.tg-sheet-handle {
+  width: 36px; height: 4px; border-radius: 99px;
+  background: rgba(255,255,255,0.25);
+  margin: 4px auto 10px;
+}
+.tg-sheet-title {
+  font-weight: 700; font-size: 16px; text-align: center; padding: 0 8px;
+}
+.tg-sheet-sub {
+  font-size: 12px; color: var(--muted); text-align: center;
+  margin-bottom: 10px;
+}
+.tg-sheet-btn {
+  display: block; width: 100%;
+  text-align: left;
+  padding: 14px 14px;
+  margin: 4px 0;
+  border: none;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.06);
+  color: var(--text, #fff);
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  min-height: 48px;
+}
+.tg-sheet-btn:active { background: rgba(255,255,255,0.12); }
+.tg-sheet-warn { color: #f1c40f; }
+.tg-sheet-danger { color: #e74c3c; }
+.tg-sheet-cancel {
+  text-align: center;
+  margin-top: 8px;
+  background: rgba(255,255,255,0.1);
+  font-weight: 600;
+}
+.att-chart { display: block; margin-top: 4px; }
+
+/* TG_NAV_2028 — сучасна навігація Telegram Mini App */
+body.tg-mini-app {
+  --tg-tab-h: 56px;
+}
+body.tg-mini-app .mn,
+body.tg-mini-app .mobile-nav,
+body.tg-mini-app #mobileNav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9000;
+  display: flex;
+  align-items: stretch;
+  justify-content: space-around;
+  min-height: calc(var(--tg-tab-h) + env(safe-area-inset-bottom, 0px));
+  padding: 6px 4px calc(6px + env(safe-area-inset-bottom, 0px));
+  background: rgba(15, 20, 30, 0.82);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-top: 1px solid rgba(255,255,255,0.08);
+  box-shadow: 0 -8px 32px rgba(0,0,0,0.35);
+  transform: translateZ(0);
+}
+body.tg-mini-app .mni {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 6px 4px;
+  min-height: 44px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted, #8b95a8);
+  border-radius: 12px;
+  text-decoration: none;
+  transition: color 0.15s ease, background 0.15s ease, transform 0.12s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+body.tg-mini-app .mni .ic {
+  font-size: 20px;
+  line-height: 1;
+  opacity: 0.85;
+}
+body.tg-mini-app .mni.on {
+  color: var(--club-accent, #c8a84b);
+  background: rgba(200, 168, 75, 0.12);
+}
+body.tg-mini-app .mni.on .ic { opacity: 1; }
+body.tg-mini-app .mni:active {
+  transform: scale(0.94);
+}
+
+/* контент не ховається під tab bar */
+body.tg-mini-app .main,
+body.tg-mini-app #main,
+body.tg-mini-app .content {
+  padding-bottom: calc(var(--tg-tab-h) + env(safe-area-inset-bottom, 0px) + 12px) !important;
+}
+body.tg-mini-app.mode-board-focus .mn,
+body.tg-mini-app.board-only-mode .mn,
+body.tg-mini-app.board-workspace .mn {
+  display: none !important;
+}
+
+/* Drawer backdrop */
+#drawerBackdrop,
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9500;
+  background: rgba(0,0,0,0.55);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.22s ease;
+}
+#drawerBackdrop.show,
+.drawer-backdrop.show,
+body.drawer-open #drawerBackdrop {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Sidebar as TG drawer on mobile */
+@media (max-width: 900px) {
+  body.tg-mini-app .sidebar {
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: min(86vw, 320px) !important;
+    z-index: 9600;
+    transform: translateX(-105%);
+    transition: transform 0.28s cubic-bezier(0.2, 0.9, 0.2, 1);
+    background: rgba(16, 22, 34, 0.96);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    padding-top: max(12px, env(safe-area-inset-top, 12px));
+    padding-bottom: env(safe-area-inset-bottom, 12px);
+    box-shadow: 8px 0 40px rgba(0,0,0,0.45);
+    overflow-y: auto;
+    display: flex !important;
+    flex-direction: column;
+  }
+  body.tg-mini-app.drawer-open .sidebar,
+  body.tg-mini-app .sidebar.open,
+  body.tg-mini-app .sidebar.show {
+    transform: translateX(0);
+  }
+  body.tg-mini-app .sidebar .nav {
+    margin: 2px 10px;
+    border-radius: 12px;
+    padding: 12px 14px;
+    min-height: 48px;
+  }
+  body.tg-mini-app .sidebar .nav.on {
+    background: rgba(200, 168, 75, 0.14);
+  }
+}
+
+/* Секції меню */
+.nav-section-label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted, #8b95a8);
+  padding: 16px 16px 6px;
+  opacity: 0.85;
+}
+
+/* Coach tools */
+.coach-tools-panel, .coach-tools-settings {
+  margin-bottom: 14px;
+}
+.coach-tools-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 10px;
+}
+@media (max-width: 480px) {
+  .coach-tools-grid { grid-template-columns: 1fr; }
+}
+.coach-tools-grid .btn {
+  min-height: 48px;
+  justify-content: flex-start;
+  text-align: left;
+  font-size: 13px;
+  padding: 10px 12px;
+}
+
+/* Diary board attachment */
+#diaryList .btn-p.btn-sm[data-load-diary-board] {
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+/* Home quick + coach tools collapse */
+.home-quick-row {
+  display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;
+}
+.coach-tools-collapse { margin-bottom: 12px; padding: 0; overflow: hidden; }
+.coach-tools-handle {
+  width: 100%; display: flex; justify-content: space-between; align-items: center;
+  padding: 12px 14px; background: transparent; border: 0; color: inherit;
+  font: inherit; cursor: pointer; min-height: 48px; text-align: left;
+}
+.coach-tools-body { padding: 0 10px 12px; }
+.coach-tools-body .coach-tools-panel { margin: 0; box-shadow: none; border: 0; background: transparent; }
+.sc-tap { cursor: pointer; transition: transform .15s ease, border-color .15s; }
+.sc-tap:active { transform: scale(0.98); }
+.sc-next-training.tg-row-holding, .pl-row.tg-row-holding, .scheme-row.tg-row-holding {
+  outline: 2px solid var(--club-secondary, #22c55e); opacity: 0.92;
+}
+
+/* Players table */
+.pl-table { overflow: hidden; }
+.pl-head, .pl-row {
+  display: grid;
+  grid-template-columns: 44px 1fr 48px 56px 64px;
+  gap: 6px; align-items: center;
+  padding: 10px 12px;
+  font-size: 13px;
+}
+.pl-head { border-bottom: 1px solid rgba(255,255,255,0.08); font-weight: 600; color: var(--muted, #94a3b8); }
+.pl-th {
+  background: none; border: 0; color: inherit; font: inherit; text-align: left;
+  cursor: pointer; padding: 0; min-height: 32px;
+}
+.pl-th.on { color: var(--club-secondary, #22c55e); }
+.pl-row { border-bottom: 1px solid rgba(255,255,255,0.05); min-height: 48px; }
+.pl-row.is-reserve { opacity: 0.85; }
+.pl-row.is-injured .pl-name { color: var(--danger, #f87171); }
+.pl-num { font-variant-numeric: tabular-nums; color: var(--muted); }
+.pl-att { font-variant-numeric: tabular-nums; }
+.pl-role { font-size: 11px; color: var(--muted); }
+
+.scheme-group-title {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--muted); margin: 12px 0 6px; padding: 0 4px;
+}
+.tg-sheet-preview {
+  padding: 12px 16px; font-size: 13px; line-height: 1.45;
+  color: var(--text, #e2e8f0); white-space: normal;
+}
+
+/* BOARD FILL 2026 — без чорних смуг, без накладання хедера */
+body.board-active .header,
+body.view-board .header,
+.app.board-mode .header {
+  /* на екрані дошки хедер додатку ховаємо — дошка має свій chrome */
+}
+#v-board.view-board.on,
+#v-board.on.view-board {
+  display: flex !important;
+  flex-direction: column !important;
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 5000 !important;
+  background: #0a0f0a !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  overflow: hidden !important;
+}
+#v-board .board-chrome-top,
+#v-board .btb-top,
+#boardToolbarTop {
+  flex: 0 0 auto;
+  z-index: 20;
+  padding-top: max(env(safe-area-inset-top, 8px), 8px);
+}
+#v-board .board-field-wrap,
+#v-board .board-stage,
+#v-board #boardStage,
+#v-board .field-wrap {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  position: relative !important;
+  display: flex !important;
+  align-items: stretch !important;
+  justify-content: center !important;
+}
+#v-board canvas,
+#v-board .board-canvas,
+#v-board #boardCanvas {
+  max-width: 100% !important;
+  max-height: 100% !important;
+}
+#v-board .board-chrome-bottom,
+#v-board .btb-bottom,
+#boardToolbarBottom {
+  flex: 0 0 auto !important;
+  z-index: 20;
+  padding-bottom: max(env(safe-area-inset-bottom, 8px), 8px);
+  background: #12181f !important;
+}
+/* коли активна дошка — ховаємо глобальний хедер/нав, щоб не накладались */
+body.board-on .header,
+body.board-on .sidebar,
+body.board-on .mn,
+body.board-on #mobileNav {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}

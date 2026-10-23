@@ -1054,17 +1054,28 @@ const BoardEngine = {
   },
 
   saveBoard() {
-    Modal.prompt('Назва схеми', 'Схема ' + new Date().toLocaleString('uk-UA'), name => {
+    const ctx = (Store.get().ui && Store.get().ui.boardContext) || null;
+    Modal.prompt('Назва схеми / заготовки', 'Схема ' + new Date().toLocaleString('uk-UA'), name => {
       if (!name) return;
       const s = Store.get();
-      s.boards.push({
+      const snap = {
         id: uid(), name,
-        objects: JSON.parse(JSON.stringify(s.activeBoard.objects)),
+        objects: JSON.parse(JSON.stringify((s.activeBoard && s.activeBoard.objects) || [])),
         camera: Object.assign({}, this.camera),
         createdAt: new Date().toISOString()
-      });
+      };
+      s.boards = s.boards || [];
+      s.boards.push(snap);
+      if (ctx && ctx.type === 'training' && ctx.id) {
+        const tr = (s.trainings || []).find(x => x.id === ctx.id);
+        if (tr) { tr.board = { objects: JSON.parse(JSON.stringify(snap.objects)) }; tr.boardId = snap.id; }
+      }
+      if (ctx && ctx.type === 'diary' && ctx.id) {
+        const d = (s.diary || []).find(x => x.id === ctx.id);
+        if (d) { d.board = { objects: JSON.parse(JSON.stringify(snap.objects)) }; d.boardId = snap.id; }
+      }
       StorageManager.save();
-      Toast.show('Збережено', 'ok');
+      Toast.show('Збережено' + (ctx ? ' + прикріплено' : ''), 'ok');
     });
   },
 
@@ -2212,7 +2223,8 @@ const BoardEngine = {
         <button class="tb" data-action="board-undo" title="Скасувати">↩</button>
         <button class="tb" data-action="board-redo" title="Повторити">↪</button>
         <button class="tb" data-action="board-clear" title="Очистити">🗑</button>
-        <button class="tb" data-action="board-save" title="Зберегти">💾</button>
+        <button class="tb" data-action="board-save" title="Зберегти схему">💾</button>
+        <button class="tb" data-action="save-board-diary" title="Зберегти дошку в щоденник">📓</button>
       </div>`;
     }
 

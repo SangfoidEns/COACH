@@ -25,7 +25,12 @@ const Actions = {
     const name = document.getElementById('mxN')?.value?.trim();
     if (!name) { Toast.show('Вкажіть назву', 'warn'); return; }
     const useBoard = document.getElementById('mxBoard')?.checked;
-    const board = useBoard ? { objects: JSON.parse(JSON.stringify(Store.get().activeBoard.objects)) } : null;
+    let board = null;
+    if (useBoard) {
+      board = (typeof BoardLink !== 'undefined')
+        ? BoardLink.snapshot()
+        : { objects: JSON.parse(JSON.stringify((Store.get().activeBoard || {}).objects || [])) };
+    }
     let animId = null;
     if (board) {
       animId = uid();
@@ -51,45 +56,180 @@ const Actions = {
   myExFromBoard() {
     this.newMyEx();
   },
-  newDiary() {
+  newDiary(opts) {
+    opts = opts || {};
+    const forceBoard = !!opts.withBoard;
+    const objs = ((Store.get().activeBoard || {}).objects || []);
+    const boardCount = objs.length;
     const players = Store.get().players.map(p => `<option value="${p.id}">${p.number}. ${p.firstName} ${p.lastName}</option>`).join('');
-    Modal.open('Запис у щоденник', `
+    const boardHint = boardCount
+      ? ('На дошці зараз <strong>' + boardCount + '</strong> об\'єктів. Можна зберегти знімок разом із записом.')
+      : 'Дошка порожня — можна зберегти запис без схеми або спочатку намалювати тактику.';
+    Modal.open(forceBoard ? 'Зберегти дошку в щоденник' : 'Запис у щоденник', `
       <div class="fg">
-        <div class="fgr full"><label>Заголовок</label><input id="dyT" placeholder="Проблема проти high press"></div>
+        <div class="fgr full"><label>Заголовок</label><input id="dyT" placeholder="${forceBoard ? 'Тактика / ідея з дошки' : 'Проблема проти high press'}" value="${forceBoard ? 'Схема з дошки · ' + new Date().toLocaleString('uk-UA') : ''}"></div>
         <div class="fgr"><label>Категорія</label>
-          <select id="dyC"><option>Tactical Idea</option><option>Training Reflection</option>
+          <select id="dyC"><option ${forceBoard ? 'selected' : ''}>Tactical Idea</option><option>Training Reflection</option>
           <option>Match Reflection</option><option>Player Observation</option><option>Team Observation</option>
           <option>Problem</option><option>Solution</option><option>Goal</option><option>Meeting</option><option>Personal Note</option></select>
         </div>
-        <div class="fgr"><label>Настрій</label><select id="dyM"><option></option><option>😊</option><option>😐</option><option>😤</option><option>💡</option></select></div>
-        <div class="fgr full"><label>Текст</label><textarea id="dyX" rows="5"></textarea></div>
+        <div class="fgr"><label>Настрій</label><select id="dyM"><option></option><option>😊</option><option>😐</option><option>😤</option><option selected>💡</option></select></div>
+        <div class="fgr full"><label>Текст</label><textarea id="dyX" rows="4" placeholder="Короткий коментар до схеми..."></textarea></div>
         <div class="fgr"><label>Гравець</label><select id="dyP"><option value="">—</option>${players}</select></div>
         <div class="fgr full"><label>Tags</label><input id="dyTags" placeholder="3defenders, pressing"></div>
-        <div class="fgr full"><label><input type="checkbox" id="dyBoard"> Прикріпити поточну дошку</label></div>
+        <div class="fgr full" style="background:rgba(34,197,94,0.08);padding:10px;border-radius:10px;border:1px solid rgba(34,197,94,0.25)">
+          <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer">
+            <input type="checkbox" id="dyBoard" ${forceBoard || boardCount > 0 ? 'checked' : ''} style="margin-top:3px">
+            <span><strong>Зберегти дошку разом із записом</strong><br>
+            <span class="note-sm">${boardHint}</span></span>
+          </label>
+        </div>
       </div>`, [
       { label: 'Скасувати', cls: 'btn-s', action: 'cancel' },
-      { label: 'Зберегти', cls: 'btn-p', action: 'create-diary' }
+      { label: 'Зберегти в щоденник', cls: 'btn-p', action: 'create-diary' }
     ]);
   },
-  createDiary() {
-    const title = document.getElementById('dyT')?.value?.trim() || 'Запис';
-    const board = document.getElementById('dyBoard')?.checked
-      ? { objects: JSON.parse(JSON.stringify(Store.get().activeBoard.objects)) } : null;
-    Store.get().diary = Store.get().diary || [];
-    Store.get().diary.push({
-      id: uid(), title,
-      category: document.getElementById('dyC')?.value,
-      mood: document.getElementById('dyM')?.value,
-      text: document.getElementById('dyX')?.value || '',
-      playerId: document.getElementById('dyP')?.value || '',
-      tags: (document.getElementById('dyTags')?.value || '').split(',').map(s => s.trim()).filter(Boolean),
-      board, date: today(),
-      createdAt: new Date().toISOString()
-    });
-    StorageManager.save(); Modal.close();
-    Toast.show('Запис додано', 'ok');
-    App.navigate('diary');
+
+  /** Швидке збереження поточної дошки як запис щоденника (з панелі дошки) */
+  saveBoardToDiary() {
+    this.newDiary({ withBoard: true });
   },
+  createDiary() {
+    try {
+      const title = document.getElementById('dyT')?.value?.trim() || 'Запис';
+      const attach = !!document.getElementById('dyBoard')?.checked;
+      let board = null;
+      if (attach && typeof BoardLink !== 'undefined') board = BoardLink.snapshot();
+      else if (attach) {
+        board = { objects: JSON.parse(JSON.stringify((Store.get().activeBoard || {}).objects || [])) };
+      }
+      Store.get().diary = Store.get().diary || [];
+      Store.get().diary.push({
+        id: uid(),
+        title,
+        category: document.getElementById('dyC')?.value || 'Personal Note',
+        mood: document.getElementById('dyM')?.value || '',
+        text: document.getElementById('dyX')?.value || '',
+        playerId: document.getElementById('dyP')?.value || '',
+        tags: (document.getElementById('dyTags')?.value || '').split(',').map(s => s.trim()).filter(Boolean),
+        board,
+        date: today(),
+        createdAt: new Date().toISOString()
+      });
+      StorageManager.save();
+      Modal.close();
+      try { TelegramManager.hapticSuccess && TelegramManager.hapticSuccess(); } catch (_) {}
+      Toast.show(attach ? 'Запис збережено + дошка' : 'Запис збережено', 'ok');
+      App.navigate('diary');
+    } catch (e) {
+      console.error('[createDiary]', e);
+      Toast.show('Помилка збереження щоденника', 'error');
+    }
+  },
+
+  editDiary(id) {
+    const d = (Store.get().diary || []).find(x => x.id === id);
+    if (!d) return;
+    const players = Store.get().players.map(p =>
+      `<option value="${p.id}" ${p.id === d.playerId ? 'selected' : ''}>${p.number}. ${p.firstName} ${p.lastName}</option>`
+    ).join('');
+    const cats = ['Tactical Idea','Training Reflection','Match Reflection','Player Observation','Team Observation','Problem','Solution','Goal','Meeting','Personal Note'];
+    Modal.open('Редагування запису', `
+      <div class="fg">
+        <div class="fgr full"><label>Заголовок</label><input id="dyT" value="${sanitize(d.title || '')}"></div>
+        <div class="fgr"><label>Категорія</label>
+          <select id="dyC">${cats.map(c => `<option ${d.category===c?'selected':''}>${c}</option>`).join('')}</select>
+        </div>
+        <div class="fgr"><label>Настрій</label>
+          <select id="dyM"><option></option>
+            ${['😊','😐','😤','💡'].map(m => `<option ${d.mood===m?'selected':''}>${m}</option>`).join('')}
+          </select>
+        </div>
+        <div class="fgr full"><label>Текст</label><textarea id="dyX" rows="5">${sanitize(d.text || '')}</textarea></div>
+        <div class="fgr"><label>Гравець</label><select id="dyP"><option value="">—</option>${players}</select></div>
+        <div class="fgr full"><label>Tags</label><input id="dyTags" value="${sanitize((d.tags||[]).join(', '))}"></div>
+        <div class="fgr full"><label><input type="checkbox" id="dyBoard"> ${d.board ? 'Оновити дошку з поточної' : 'Прикріпити поточну дошку'}</label></div>
+        ${d.board ? '<p class="note-sm">У запису вже є прикріплена дошка. Відкрити: кнопка ⚽ у списку.</p>' : ''}
+      </div>`, [
+      { label: 'Скасувати', cls: 'btn-s', action: 'cancel' },
+      { label: d.board ? 'Відкрити дошку' : '—', cls: 'btn-s', action: d.board ? 'open-diary-board' : 'cancel' },
+      { label: 'Зберегти', cls: 'btn-p', action: 'save-diary' }
+    ]);
+    const saveBtn = document.querySelector('[data-modal-action="save-diary"]');
+    if (saveBtn) saveBtn.dataset.did = id;
+    const openBtn = document.querySelector('[data-modal-action="open-diary-board"]');
+    if (openBtn) openBtn.dataset.did = id;
+  },
+
+  saveDiary(id) {
+    try {
+      const d = (Store.get().diary || []).find(x => x.id === id);
+      if (!d) return;
+      d.title = document.getElementById('dyT')?.value?.trim() || d.title;
+      d.category = document.getElementById('dyC')?.value || d.category;
+      d.mood = document.getElementById('dyM')?.value || '';
+      d.text = document.getElementById('dyX')?.value || '';
+      d.playerId = document.getElementById('dyP')?.value || '';
+      d.tags = (document.getElementById('dyTags')?.value || '').split(',').map(s => s.trim()).filter(Boolean);
+      d.updatedAt = new Date().toISOString();
+      if (document.getElementById('dyBoard')?.checked) {
+        d.board = (typeof BoardLink !== 'undefined') ? BoardLink.snapshot() : {
+          objects: JSON.parse(JSON.stringify((Store.get().activeBoard || {}).objects || []))
+        };
+        d.boardObjCount = (d.board && d.board.objects) ? d.board.objects.length : 0;
+      }
+      StorageManager.save();
+      Modal.close();
+      try { TelegramManager.hapticSuccess && TelegramManager.hapticSuccess(); } catch (_) {}
+      Toast.show('Запис оновлено', 'ok');
+      App.renderCurrent();
+    } catch (e) {
+      console.error('[saveDiary]', e);
+      Toast.show('Помилка збереження', 'error');
+    }
+  },
+
+  openDiaryBoard(id) {
+    const d = (Store.get().diary || []).find(x => x.id === id);
+    if (!d || !d.board) {
+      Toast.show('Немає прикріпленої дошки', 'warn');
+      return;
+    }
+    Modal.close();
+    if (typeof BoardLink !== 'undefined') BoardLink.openSnapshot(d.board, 'diary-board');
+    else {
+      Store.get().activeBoard.objects = JSON.parse(JSON.stringify(d.board.objects || []));
+      App.allowBoardOnce('diary-board');
+      App.navigate('board');
+    }
+  },
+
+  openTrainingBoard(id) {
+    const t = (Store.get().trainings || []).find(x => x.id === id);
+    Modal.close();
+    if (t && t.board && typeof BoardLink !== 'undefined') {
+      BoardLink.openSnapshot(t.board, 'training-board');
+      Toast.show('Дошка тренування відкрита', 'ok');
+      return;
+    }
+    // немає знімка — відкрити поточну дошку і запам'ятати контекст
+    Store.get().ui = Store.get().ui || {};
+    Store.get().ui.boardContext = { type: 'training', id: id };
+    App.allowBoardOnce('training-board');
+    App.navigate('board');
+    Toast.show('Дошка відкрита. Збережіть схему або «Прикріпити до тренування» в меню.', 'ok');
+  },
+
+  attachBoardToTraining(id) {
+    const t = (Store.get().trainings || []).find(x => x.id === id);
+    if (!t) return;
+    if (typeof BoardLink !== 'undefined') BoardLink.attachTo(t);
+    else t.board = { objects: JSON.parse(JSON.stringify((Store.get().activeBoard || {}).objects || [])) };
+    StorageManager.save();
+    try { TelegramManager.hapticSuccess && TelegramManager.hapticSuccess(); } catch (_) {}
+    Toast.show('Дошку прикріплено до «' + (t.name || '') + '»', 'ok');
+  },
+
   saveB3Anim() {
     const name = prompt('Назва анімації/фази:', '3-2 Build-up');
     if (!name) return;
@@ -210,11 +350,13 @@ const Actions = {
         <div class="fgr"><label>Дата</label><input type="date" id="teDate" value="${t.date}"></div>
         <div class="fgr"><label>Час</label><input type="time" id="teTime" value="${t.time || ''}"></div>
         <div class="fgr"><label>Статус</label><select id="teSt">
-          ${['draft','planned','done','pinned'].map(s => `<option value="${s}" ${t.status===s?'selected':''}>${s}</option>`).join('')}
+          ${['draft','planned','done','pinned','cancelled'].map(s => `<option value="${s}" ${t.status===s?'selected':''}>${s}</option>`).join('')}
         </select></div>
         <div class="fgr"><label>RPE</label><input type="number" id="teInt" value="${t.intensity || 6}" min="1" max="10"></div>
         <div class="fgr full"><label>Мета</label><input id="teGoal" value="${sanitize(t.mainGoal || '')}"></div>
         <div class="fgr full"><label>Коментар</label><textarea id="teCom">${sanitize(t.comment || '')}</textarea></div>
+        <div class="fgr full"><label><input type="checkbox" id="teAttachBoard"> ${t.board ? 'Оновити прикріплену дошку з поточної' : 'Прикріпити поточну дошку до тренування'}</label></div>
+        ${t.board ? '<p class="note-sm">До тренування вже прикріплена дошка (' + (t.board.objects||[]).length + ' об\'єктів).</p>' : ''}
       </div>
       <div class="ct" style="margin-top:12px">Структура (разом: <strong id="totalDur">${total}</strong> хв)</div>
       <div id="structList">${structHtml}</div>
@@ -234,6 +376,8 @@ const Actions = {
     if (saveBtn) saveBtn.dataset.tid = id;
     const attBtn = document.querySelector('[data-modal-action="open-attendance"]');
     if (attBtn) attBtn.dataset.tid = id;
+    const boardBtn = document.querySelector('[data-modal-action="open-training-board"]');
+    if (boardBtn) boardBtn.dataset.tid = id;
 
     // block actions via delegation on modal
     document.getElementById('modalBody').onclick = e => {
@@ -301,10 +445,26 @@ const Actions = {
     t.mainGoal = document.getElementById('teGoal')?.value;
     t.comment = document.getElementById('teCom')?.value;
     t.duration = (t.structure || []).reduce((a, b) => a + (b.duration || 0), 0);
+    if (document.getElementById('teAttachBoard')?.checked) {
+      if (typeof BoardLink !== 'undefined') BoardLink.attachTo(t);
+      else t.board = { objects: JSON.parse(JSON.stringify((Store.get().activeBoard || {}).objects || [])) };
+    }
     StorageManager.save();
     Modal.close();
     Toast.show('Збережено', 'ok');
     App.renderCurrent();
+  },
+
+  cancelTraining(id) {
+    const t = Store.get().trainings.find(x => x.id === id);
+    if (!t) return;
+    Modal.confirm('Скасувати тренування «' + (t.name || '') + '»? Воно не враховуватиметься в аналітиці.', () => {
+      t.status = 'cancelled';
+      t.cancelledAt = new Date().toISOString();
+      StorageManager.save();
+      Toast.show('Тренування скасовано', 'ok');
+      App.renderCurrent();
+    });
   },
 
   dupTraining(id) {
