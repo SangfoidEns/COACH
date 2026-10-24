@@ -105,22 +105,7 @@ const BoardEngine = {
     this._bindBenchPanelOnce();
     // Resize
     if (window.ResizeObserver) {
-      new ResizeObserver(() => { this._sizeStageToPitch && this._sizeStageToPitch(); this.applyCamera(); this.renderTokens(); this.renderDrawings(); }).observe(c);
-      // Freeze guard: clear stuck multi-touch state that leaves zoom indicator active without movement
-      if (!this._freezeGuard) {
-        this._freezeGuard = setInterval(() => {
-          try {
-            if (this.pointers && this.pointers.size && !this.dragObj && !this.panStart && !this.drawing && !this.benchDragId) {
-              // no recent activity — clear
-              if (!this._lastPtrTs || (Date.now() - this._lastPtrTs > 1200)) {
-                this.pointers.clear();
-                this.lastPinchDist = 0;
-                this.updateZoomIndicator && this.updateZoomIndicator();
-              }
-            }
-          } catch (_) {}
-        }, 800);
-      }
+      new ResizeObserver(() => { this.applyCamera(); this.renderTokens(); this.renderDrawings(); }).observe(c);
     window.addEventListener('orientationchange', () => {
       setTimeout(() => { this.fitField(); this.render(); }, 200);
     });
@@ -229,74 +214,12 @@ const BoardEngine = {
     this.updateZoomIndicator();
   },
 
-  /** Вписати поле в контейнер зі збереженням пропорцій 68:105 (як viewBox).
-   *  Критично: stage має ті самі пропорції, що й SVG, інакше % фішок ≠ розмітка. */
+  /** Вписати поле в доступну область main */
   fitField() {
     this.camera = { x: 0, y: 0, zoom: 1 };
-    this._sizeStageToPitch();
     this.applyCamera();
-    requestAnimationFrame(() => {
-      this._sizeStageToPitch();
-      this.applyCamera();
-      this.renderTokens();
-      this.renderDrawings && this.renderDrawings();
-    });
     this.renderTokens();
     this.renderDrawings();
-  },
-
-  _sizeStageToPitch() {
-    try {
-      const c = document.getElementById('fieldContainer');
-      const stage = document.getElementById('fieldStage');
-      if (!c || !stage) return;
-      const cw = Math.max(1, c.clientWidth || 1);
-      const ch = Math.max(1, c.clientHeight || 1);
-      // Official pitch ratio 68m × 105m → width/height
-      const AR = 68 / 105;
-      let w, h;
-      if (cw / ch > AR) {
-        h = ch;
-        w = h * AR;
-      } else {
-        w = cw;
-        h = w / AR;
-      }
-      w = Math.max(120, Math.round(w));
-      h = Math.max(180, Math.round(h));
-      // Inline !important-equivalent: clear conflicting CSS inset/100%
-      stage.style.cssText = [
-        'position:absolute',
-        'width:' + w + 'px',
-        'height:' + h + 'px',
-        'left:' + Math.round((cw - w) / 2) + 'px',
-        'top:' + Math.round((ch - h) / 2) + 'px',
-        'right:auto',
-        'bottom:auto',
-        'inset:auto',
-        'max-width:none',
-        'max-height:none',
-        'margin:0',
-        'box-sizing:border-box',
-        'aspect-ratio:68/105',
-        'overflow:visible',
-        'transform-origin:50% 50%'
-      ].join(';');
-      // SVG must fill stage exactly (no letterbox) so % chips == markings
-      const svg = document.getElementById('fieldSvg');
-      const draw = document.getElementById('drawSvg');
-      [svg, draw].forEach(el => {
-        if (!el) return;
-        el.setAttribute('preserveAspectRatio', 'none');
-        el.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:block';
-      });
-      const layer = document.getElementById('playersLayer');
-      if (layer) {
-        layer.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none';
-      }
-      this._stageW = w;
-      this._stageH = h;
-    } catch (_) {}
   },
   zoomFit() { this.fitField(); },
   resetCamera() { this.fitField(); },
@@ -483,9 +406,6 @@ const BoardEngine = {
     const tool = s.activeBoard.tool;
     const target = e.target.closest('.pt, .ball, .eq');
 
-    // Players/guests can inspect and pan the board, but cannot move or create objects.
-    if (typeof AuthManager !== 'undefined' && !AuthManager.isCoach()) return;
-
     /* ── IMMEDIATE DRAG: touch player → attach now ── */
     if (target && (tool === 'select' || tool === 'player' || tool === 'opponent' || !tool)) {
       const id = target.dataset.id;
@@ -635,7 +555,6 @@ const BoardEngine = {
 
   /* ── POINTER MOVE — ZERO LAG path ── */
   onPointerMove(e) {
-    this._lastPtrTs = Date.now();
     const interacting = this.dragObj || this.panStart || this.drawing || this.pointers.size >= 2 || this.benchDragId;
     if (interacting) {
       try { e.preventDefault(); } catch (_) {}
@@ -741,17 +660,10 @@ const BoardEngine = {
     try {
       if (e && e.pointerId != null) this.pointers.delete(e.pointerId);
     } catch (_) {}
-    // Захист від «мертвих» pointerId у Map / зависання zoom-індикатора
-    if (this.pointers.size > 2 || (this.pointers.size && !this.dragObj && !this.panStart && !this.drawing)) {
+    // Захист від «мертвих» pointerId у Map
+    if (this.pointers.size > 2) {
       this.pointers.clear();
       this.lastPinchDist = 0;
-    }
-    // Safety: якщо pointerup без активного жесту — повний скид
-    if (!this.dragObj && !this.panStart && !this.drawing && !this.benchDragId) {
-      this.lastPinchDist = 0;
-      if (this.pointers.size === 0) {
-        try { this.updateZoomIndicator && this.updateZoomIndicator(); } catch (_) {}
-      }
     }
     if (this.pointers.size < 2) {
       this.lastPinchDist = 0;
@@ -1564,19 +1476,14 @@ const BoardEngine = {
       '';
   },
 
-  /** Розмір фішки = % ширини поля → масштабується разом із розміткою. */
+  /** Розмір фішки відносно видимої висоти поля (розмітка ~105м, гравець ~1.7%) */
   tokenMetrics() {
-    const stage = document.getElementById('fieldStage');
-    // Prefer measured stage width; on iOS first frame may be 0 → fallback container
-    let w = this._stageW || (stage && stage.clientWidth) || 0;
-    if (w < 80) {
-      const c = document.getElementById('fieldContainer');
-      w = (c && c.clientWidth) || 320;
-    }
-    // ~5.2% ширини поля; clamp tighter for phones so chips stay readable but scale down
-    const player = Math.max(16, Math.min(42, Math.round(w * 0.052)));
-    const ball = Math.max(8, Math.round(player * 0.40));
-    const inv = Math.max(10, Math.round(player * 0.38));
+    // Базовий розмір = як аватар на лавці (28px). Zoom/pan — через CSS transform #fieldStage,
+    // тому фішки масштабуються разом із полем, позиції лишаються у 0..1.
+    const BENCH_AVATAR = 28;
+    const player = BENCH_AVATAR;
+    const ball = Math.round(player * 0.42);
+    const inv = Math.round(player * 0.36);
     const cone = Math.round(inv * 1.05);
     const equip = inv;
     const chip = Math.round(inv * 0.95);
@@ -1584,11 +1491,10 @@ const BoardEngine = {
     const mark = Math.round(inv * 0.55);
     const markSq = Math.round(inv * 0.95);
     const goal = Math.round(player * 1.35);
-    const font = Math.max(8, Math.min(14, Math.round(player * 0.38)));
     return {
       player, ball, cone, equip, chip, chipLg, mark, markSq, inv, goal,
-      font,
-      ringPad: Math.max(4, Math.round(player * 0.18))
+      font: 11,
+      ringPad: 5
     };
   },
 
@@ -1601,7 +1507,6 @@ const BoardEngine = {
     if (!panel) return;
     // Delegation: старт drag з лавки
     panel.addEventListener('pointerdown', e => {
-      if (typeof AuthManager !== 'undefined' && !AuthManager.isCoach()) return;
       const chip = e.target.closest('.bench-chip');
       if (!chip || !chip.dataset.id) return;
       if (e.button === 2) return;
@@ -1623,10 +1528,6 @@ const BoardEngine = {
 
   /** Вибрати запасного: наступний тап по полю ставить його */
   armBenchPlace(objId) {
-    if (typeof AuthManager !== 'undefined' && !AuthManager.isCoach()) {
-      try { Toast.show('Лавка доступна лише тренеру для редагування', 'warn'); } catch (_) {}
-      return;
-    }
     this.pendingFromBenchId = objId;
     Store.get().activeBoard.selectedId = objId;
     Store.get().activeBoard.tool = 'select';
@@ -1636,7 +1537,6 @@ const BoardEngine = {
   },
 
   startBenchDrag(objId, e) {
-    if (typeof AuthManager !== 'undefined' && !AuthManager.isCoach()) return;
     const s = Store.get();
     const obj = (s.activeBoard.objects || []).find(o => o.id === objId && o.onBench);
     if (!obj) return;
@@ -1781,7 +1681,7 @@ const BoardEngine = {
         '<div class="bench-avatar-wrap">' + ringSvg +
         '<div class="bench-avatar" style="' + bgStyle + '"><span class="bench-num">' + (o.number || '') + '</span></div></div>' +
         '<div class="bench-meta"><span class="bench-pos">' + (o.position || (pl && pl.position) || '') + '</span> ' +
-        '<span class="bench-name">' + sanitize(o.label || '') + '</span>' + tag + '</div></div>';
+        '<span class="bench-name">' + (o.label || '') + '</span>' + tag + '</div></div>';
     };
     const stOf = (o) => o.status || ((s.players || []).find(p => p.id === o.playerId) || {}).status || '';
     const grOf = (o) => ((s.players || []).find(p => p.id === o.playerId) || {}).group || '';
@@ -1813,18 +1713,6 @@ const BoardEngine = {
   },
   renderTokens() {
     // migrateLeftEdgeToBench — лише при loadBoard, не на кожен кадр (ламає лівий фланг)
-    try {
-      const objs = (Store.get().activeBoard && Store.get().activeBoard.objects) || [];
-      objs.forEach(o => {
-        if (!o || o.onBench) return;
-        if (o.type === 'player' || o.type === 'opponent' || o.type === 'ball') {
-          if (o.x == null || isNaN(o.x)) o.x = 0.5;
-          if (o.y == null || isNaN(o.y)) o.y = 0.5;
-          o.x = Math.max(0.02, Math.min(0.98, Number(o.x)));
-          o.y = Math.max(0.02, Math.min(0.98, Number(o.y)));
-        }
-      });
-    } catch (_) {}
     this.renderBenchPanel();
     const layer = document.getElementById('playersLayer');
     if (!layer) return;
@@ -2340,98 +2228,77 @@ const BoardEngine = {
       </div>`;
     }
 
-    // ── НИЗ: компактна док-панель + Telegram-style висувний лоток ──
+    // ── НИЗ: інструменти малювання у темній смузі ──
     if (bottom) {
       bottom.className = 'btb btb-bottom';
-      const trayOpen = !!ab.toolsTrayOpen;
       bottom.innerHTML = `
-      <div class="btb-dock" role="toolbar" aria-label="Інструменти дошки">
-        <div class="btb-primary">
+      <div class="btb-rows">
+        <div class="tg">
           <button class="tb ${tool==='select'?'on':''}" data-tool="select" title="Вибір">↖</button>
           <button class="tb ${tool==='player'?'on':''}" data-tool="player" title="Гравець">●</button>
           <button class="tb ${tool==='opponent'?'on':''}" data-tool="opponent" title="Суперник">○</button>
           <button class="tb ${tool==='ball'?'on':''}" data-tool="ball" title="М'яч">⚽</button>
+        </div>
+        <div class="tg">
           <button class="tb ${tool==='pass'?'on':''}" data-tool="pass" title="Пас">⇒</button>
           <button class="tb ${tool==='run'?'on':''}" data-tool="run" title="Рух">⇢</button>
           <button class="tb ${tool==='dribble'?'on':''}" data-tool="dribble" title="Ведення">∿</button>
+          <button class="tb ${tool==='press'?'on':''}" data-tool="press" title="Пресинг">⚡</button>
+          <button class="tb ${tool==='shot'?'on':''}" data-tool="shot" title="Удар">↓</button>
+          <button class="tb ${tool==='arrow'?'on':''}" data-tool="arrow" title="Стрілка">→</button>
+          <button class="tb ${tool==='arrowDash'?'on':''}" data-tool="arrowDash" title="Пунктир">⤳</button>
+        </div>
+        <div class="tg">
           <button type="button" class="tb tb-palette-toggle" data-action="toggle-palette" title="Палітра">🎨</button>
-          <button type="button" class="tb tb-more ${trayOpen?'on':''}" data-action="toggle-tools-tray" title="Більше інструментів" aria-expanded="${trayOpen?'true':'false'}">
-            <span class="tb-more-icon">${trayOpen ? '✕' : '⊕'}</span>
-          </button>
+          <span class="palette-swatches ${paletteOpen ? 'open' : ''}" id="paletteSwatches">
+            <button type="button" class="tb color-swatch ${drawCol==='#ecf0f1'?'on':''}" data-action="set-draw-color" data-color="#ecf0f1" style="background:#ecf0f1" title="Білий"></button>
+            <button type="button" class="tb color-swatch ${drawCol==='#3498db'?'on':''}" data-action="set-draw-color" data-color="#3498db" style="background:#3498db" title="Синій"></button>
+            <button type="button" class="tb color-swatch ${drawCol==='#2ecc71'?'on':''}" data-action="set-draw-color" data-color="#2ecc71" style="background:#2ecc71" title="Зелений"></button>
+            <button type="button" class="tb color-swatch ${drawCol==='#f1c40f'?'on':''}" data-action="set-draw-color" data-color="#f1c40f" style="background:#f1c40f" title="Жовтий"></button>
+            <button type="button" class="tb color-swatch ${drawCol==='#e67e22'?'on':''}" data-action="set-draw-color" data-color="#e67e22" style="background:#e67e22" title="Помаранчевий"></button>
+            <button type="button" class="tb color-swatch ${drawCol==='#e74c3c'?'on':''}" data-action="set-draw-color" data-color="#e74c3c" style="background:#e74c3c" title="Червоний"></button>
+            <button type="button" class="tb color-swatch ${drawCol==='#9b59b6'?'on':''}" data-action="set-draw-color" data-color="#9b59b6" style="background:#9b59b6" title="Фіолетовий"></button>
+            <button type="button" class="tb color-swatch ${drawCol==='#1a73e8'?'on':''}" data-action="set-draw-color" data-color="#1a73e8" style="background:#1a73e8" title="Синій клуб"></button>
+            <button type="button" class="tb color-swatch ${drawCol==='#111111'?'on':''}" data-action="set-draw-color" data-color="#111111" style="background:#111;border:1px solid #666" title="Чорний"></button>
+          </span>
         </div>
-        <div class="palette-swatches ${paletteOpen ? 'open' : ''}" id="paletteSwatches">
-          <button type="button" class="tb color-swatch ${drawCol==='#ecf0f1'?'on':''}" data-action="set-draw-color" data-color="#ecf0f1" style="background:#ecf0f1" title="Білий"></button>
-          <button type="button" class="tb color-swatch ${drawCol==='#3498db'?'on':''}" data-action="set-draw-color" data-color="#3498db" style="background:#3498db" title="Синій"></button>
-          <button type="button" class="tb color-swatch ${drawCol==='#2ecc71'?'on':''}" data-action="set-draw-color" data-color="#2ecc71" style="background:#2ecc71" title="Зелений"></button>
-          <button type="button" class="tb color-swatch ${drawCol==='#f1c40f'?'on':''}" data-action="set-draw-color" data-color="#f1c40f" style="background:#f1c40f" title="Жовтий"></button>
-          <button type="button" class="tb color-swatch ${drawCol==='#e67e22'?'on':''}" data-action="set-draw-color" data-color="#e67e22" style="background:#e67e22" title="Помаранчевий"></button>
-          <button type="button" class="tb color-swatch ${drawCol==='#e74c3c'?'on':''}" data-action="set-draw-color" data-color="#e74c3c" style="background:#e74c3c" title="Червоний"></button>
-          <button type="button" class="tb color-swatch ${drawCol==='#9b59b6'?'on':''}" data-action="set-draw-color" data-color="#9b59b6" style="background:#9b59b6" title="Фіолетовий"></button>
-          <button type="button" class="tb color-swatch ${drawCol==='#000000'?'on':''}" data-action="set-draw-color" data-color="#000000" style="background:#000" title="Чорний"></button>
+        <div class="tg inv-group" title="Інвентар">
+          <button class="tb ${tool==='chip'?'on':''}" data-tool="chip" title="Фішка">●</button>
+          <button class="tb ${tool==='chipLarge'?'on':''}" data-tool="chipLarge" title="Велика фішка">⬤</button>
+          <button class="tb ${tool==='cone'?'on':''}" data-tool="cone" title="Конус">▲</button>
+          <button class="tb ${tool==='wall'?'on':''}" data-tool="wall" title="Стінка / манекен">▮</button>
+          <button class="tb ${tool==='markDot'?'on':''}" data-tool="markDot" title="Точка розмітки">·</button>
+          <button class="tb ${tool==='markSquare'?'on':''}" data-tool="markSquare" title="Квадрат розмітки">▢</button>
+          <button class="tb ${tool==='pole'?'on':''}" data-tool="pole" title="Стійка">│</button>
+          <button class="tb ${tool==='minigoal'?'on':''}" data-tool="minigoal" title="Міні-ворота">⊓</button>
         </div>
-      </div>
-      <div class="btb-tray ${trayOpen?'open':''}" id="btbToolsTray" aria-hidden="${trayOpen?'false':'true'}">
-        <div class="btb-tray-handle"></div>
-        <div class="btb-tray-grid">
-          <div class="btb-tray-sec">
-            <div class="btb-tray-label">Стрілки</div>
-            <div class="btb-tray-row">
-              <button class="tb ${tool==='press'?'on':''}" data-tool="press" title="Пресинг">⚡</button>
-              <button class="tb ${tool==='shot'?'on':''}" data-tool="shot" title="Удар">↓</button>
-              <button class="tb ${tool==='arrow'?'on':''}" data-tool="arrow" title="Стрілка">→</button>
-              <button class="tb ${tool==='arrowDash'?'on':''}" data-tool="arrowDash" title="Пунктир">⤳</button>
-            </div>
-          </div>
-          <div class="btb-tray-sec">
-            <div class="btb-tray-label">Інвентар</div>
-            <div class="btb-tray-row">
-              <button class="tb ${tool==='cone'?'on':''}" data-tool="cone" title="Конус">▲</button>
-              <button class="tb ${tool==='coneBig'?'on':''}" data-tool="coneBig" title="Великий конус">△</button>
-              <button class="tb ${tool==='chip'?'on':''}" data-tool="chip" title="Фішка">◉</button>
-              <button class="tb ${tool==='chipLarge'?'on':''}" data-tool="chipLarge" title="Велика фішка">⬤</button>
-              <button class="tb ${tool==='wall'?'on':''}" data-tool="wall" title="Стінка">▬</button>
-              <button class="tb ${tool==='man'?'on':''}" data-tool="man" title="Манекен">🧍</button>
-              <button class="tb ${tool==='goal'?'on':''}" data-tool="goal" title="Ворота">⊓</button>
-              <button class="tb ${tool==='dot'?'on':''}" data-tool="dot" title="Точка">·</button>
-            </div>
-          </div>
-          <div class="btb-tray-sec">
-            <div class="btb-tray-label">Розмітка</div>
-            <div class="btb-tray-row">
-              <button class="tb ${tool==='zone'?'on':''}" data-tool="zone" title="Зона">⬚</button>
-              <button class="tb ${tool==='circle'?'on':''}" data-tool="circle" title="Коло">○</button>
-              <button class="tb ${tool==='polygon'?'on':''}" data-tool="polygon" title="Багатокутник">⬠</button>
-              <button class="tb ${tool==='freehand'?'on':''}" data-tool="freehand" title="Вільна лінія">✎</button>
-              <button class="tb ${tool==='text'?'on':''}" data-tool="text" title="Текст">T</button>
-            </div>
-          </div>
-          <div class="btb-tray-sec">
-            <div class="btb-tray-label">Поле та схема</div>
-            <div class="btb-tray-row btb-tray-row-selects">
-              <select id="fieldViewSel" title="Вид поля">
-                <option value="full">Повне</option>
-                <option value="half">Половина</option>
-                <option value="attack">Атака</option>
-                <option value="defense">Захист</option>
-              </select>
-              <select id="schemeSel" title="Схема">
-                <option value="">Схема…</option>
-                ${Object.keys(typeof SCHEMES!=='undefined'?SCHEMES:{}).map(k => '<option value="'+k+'">'+k+'</option>').join('')}
-              </select>
-            </div>
-          </div>
-          <div class="btb-tray-sec">
-            <div class="btb-tray-label">Анімація</div>
-            <div class="btb-tray-row">
-              <button class="tb" data-action="anim-play" title="Відтворити">▶</button>
-              <button class="tb" data-action="anim-pause" title="Пауза">⏸</button>
-              <button class="tb" data-action="anim-stop" title="Стоп">⏹</button>
-              <button class="tb" data-action="anim-step-prev" title="Крок −">⏮</button>
-              <button class="tb" data-action="anim-step-next" title="Крок +">⏭</button>
-              <span id="stepInd" class="step-ind">—</span>
-              <button class="tb" data-action="export-gif" title="GIF">GIF</button>
-            </div>
-          </div>
+        <div class="tg">
+          <button class="tb ${tool==='zone'?'on':''}" data-tool="zone" title="Зона">⬚</button>
+          <button class="tb ${tool==='circle'?'on':''}" data-tool="circle" title="Коло">○</button>
+          <button class="tb ${tool==='polygon'?'on':''}" data-tool="polygon" title="Багатокутник">⬠</button>
+          <button class="tb ${tool==='freehand'?'on':''}" data-tool="freehand" title="Вільна лінія">✎</button>
+          <button class="tb ${tool==='text'?'on':''}" data-tool="text" title="Текст">T</button>
+        </div>
+        <div class="tg">
+          <select id="fieldViewSel" title="Вид поля" style="padding:4px 6px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px">
+            <option value="full">Повне</option>
+            <option value="half">Половина</option>
+            <option value="attack">Атака</option>
+            <option value="defense">Захист</option>
+          </select>
+          <select id="schemeSel" title="Схема" style="padding:4px 6px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px">
+            <option value="">Схема…</option>
+            ${Object.keys(typeof SCHEMES!=='undefined'?SCHEMES:{}).map(k => '<option value="'+k+'">'+k+'</option>').join('')}
+          </select>
+        </div>
+        <div class="tg">
+          <button class="tb" data-action="anim-play" title="Відтворити">▶</button>
+          <button class="tb" data-action="anim-pause" title="Пауза">⏸</button>
+          <button class="tb" data-action="anim-stop" title="Стоп">⏹</button>
+          <button class="tb" data-action="anim-step-prev" title="Крок −">⏮</button>
+          <button class="tb" data-action="anim-step-next" title="Крок +">⏭</button>
+          <span id="stepInd" class="step-ind">—</span>
+          <button class="tb" data-action="export-gif" title="GIF">GIF</button>
         </div>
       </div>`;
     } else if (top) {
@@ -2452,18 +2319,6 @@ const BoardEngine = {
     }
     const ss = document.getElementById('schemeSel');
     if (ss) ss.onchange = () => { if (ss.value) BoardEngine.applyScheme(ss.value); };
-    // Sync tray / palette body classes after every toolbar re-render
-    try {
-      document.body.classList.toggle('tools-tray-open', !!ab.toolsTrayOpen);
-      try {
-        const tray = document.getElementById('btbToolsTray');
-        if (tray) {
-          tray.classList.toggle('open', !!ab.toolsTrayOpen);
-          tray.setAttribute('aria-hidden', ab.toolsTrayOpen ? 'false' : 'true');
-        }
-      } catch (_) {}
-      document.body.classList.toggle('palette-open', !!ab.paletteOpen);
-    } catch (_) {}
   },
 
 };

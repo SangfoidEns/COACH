@@ -96,100 +96,6 @@ const TelegramManager = {
     } catch (_) {}
   },
 
-
-  /**
-   * Server-side initData HMAC validation.
-   * API URL: window.__MS_AUTH_API__ or localStorage ms_auth_api or meta[name=ms-auth-api]
-   * Returns { ok, user, source: 'server'|'unsafe'|'local'|'error', error? }
-   */
-  async validateSession() {
-    const result = { ok: false, user: null, source: 'local', error: null };
-    try {
-      if (!this.tg) {
-        result.ok = true;
-        result.source = 'local';
-        return result;
-      }
-      const initData = this.tg.initData || '';
-      if (!initData) {
-        // Browser without Telegram — allow local coach mode
-        result.ok = true;
-        result.source = 'local';
-        result.user = this.getUser();
-        return result;
-      }
-
-      let apiBase = '';
-      try {
-        if (typeof window !== 'undefined' && window.__MS_AUTH_API__) apiBase = String(window.__MS_AUTH_API__);
-        if (!apiBase) apiBase = localStorage.getItem('ms_auth_api') || '';
-        if (!apiBase) {
-          const meta = document.querySelector('meta[name="ms-auth-api"]');
-          if (meta && meta.content) apiBase = meta.content.trim();
-        }
-      } catch (_) {}
-
-      if (!apiBase) {
-        // No server configured — fall back to unsafe user but flag it
-        result.ok = true;
-        result.source = 'unsafe';
-        result.user = this.getUser();
-        result.error = 'auth_api_not_configured';
-        console.warn('[TG] Auth API not configured — using initDataUnsafe (not production-safe)');
-        return result;
-      }
-
-      apiBase = apiBase.replace(/\/+$/, '');
-      const url = apiBase + '/api/telegram/validate';
-      const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
-      const timer = ctrl ? setTimeout(() => ctrl.abort(), 8000) : null;
-      let res;
-      try {
-        res = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ initData }),
-          signal: ctrl ? ctrl.signal : undefined
-        });
-      } finally {
-        if (timer) clearTimeout(timer);
-      }
-
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.ok) {
-        result.ok = false;
-        result.source = 'error';
-        result.error = (data && data.error) || ('http_' + res.status);
-        result.user = null;
-        console.warn('[TG] initData validation failed:', result.error);
-        return result;
-      }
-
-      result.ok = true;
-      result.source = 'server';
-      result.user = data.user || null;
-      result.authDate = data.authDate;
-      result.validatedAt = data.validatedAt;
-      this._validatedUser = result.user;
-      this._validationSource = 'server';
-      return result;
-    } catch (e) {
-      result.ok = false;
-      result.source = 'error';
-      result.error = (e && e.name === 'AbortError') ? 'timeout' : ((e && e.message) || 'network');
-      console.warn('[TG] validateSession', e);
-      return result;
-    }
-  },
-
-  getValidatedUser() {
-    return this._validatedUser || null;
-  },
-
-  getValidationSource() {
-    return this._validationSource || 'none';
-  },
-
   getUser() {
     try {
       if (this.tg && this.tg.initDataUnsafe && this.tg.initDataUnsafe.user) {
@@ -384,21 +290,67 @@ const TelegramManager = {
     } catch (_) {}
   },
 
-  /** Контекстні кнопки: без MainButton «Дошка/+Гравець» — навігація лише через glass-tabbar */
+  /** Контекстні кнопки під поточний екран додатку */
   syncChromeForView(view) {
     try {
       if (!this.isTelegram) return;
-      // Завжди ховаємо системні TG-кнопки внизу (конфліктують з glass-nav)
-      this.hideMainButton();
-      this.hideSecondaryButton();
+      const role = (typeof AuthManager !== 'undefined' && AuthManager.role) ? AuthManager.role : 'coach';
+      const isCoach = role === 'coach';
+
       if (view === 'board') {
+        this.hideMainButton();
+        this.hideSecondaryButton();
         this.showBackButton();
         try {
           if (this.tg.disableVerticalSwipes) this.tg.disableVerticalSwipes();
         } catch (_) {}
         return;
       }
-      this.hideBackButton && this.hideBackButton();
+
+      if (view === 'trainings' && isCoach) {
+        this.setMainButton('+ Нове тренування', () => {
+          if (typeof Actions !== 'undefined' && Actions.newTraining) Actions.newTraining();
+        });
+        this.hideSecondaryButton();
+        return;
+      }
+      if (view === 'players' && isCoach) {
+        this.setMainButton('+ Гравець', () => {
+          if (typeof Actions !== 'undefined' && Actions.newPlayer) Actions.newPlayer();
+        });
+        return;
+      }
+      if (view === 'calendar' && isCoach) {
+        this.setMainButton('+ Тренування', () => {
+          if (typeof Actions !== 'undefined' && Actions.newTraining) Actions.newTraining();
+        });
+        return;
+      }
+      if (view === 'diary' && isCoach) {
+        this.setMainButton('+ Нотатка', () => {
+          if (typeof Actions !== 'undefined' && Actions.newDiary) Actions.newDiary();
+          else if (typeof Actions !== 'undefined' && Actions.newDiaryEntry) Actions.newDiaryEntry();
+        });
+        return;
+      }
+      if (view === 'dashboard') {
+        this.hideMainButton();
+        // Secondary: швидкий вхід на дошку для тренера
+        if (isCoach) {
+          this.setSecondaryButton('Дошка', () => {
+            if (typeof App !== 'undefined') {
+              try { App.allowBoardOnce && App.allowBoardOnce('tg-main'); } catch (_) {}
+              App.navigate('board');
+            }
+          });
+        } else {
+          this.hideSecondaryButton();
+        }
+        return;
+      }
+      // інші екрани
+      this.hideMainButton();
+      this.hideSecondaryButton();
     } catch (e) {
       console.warn('[TG] syncChrome', e);
     }

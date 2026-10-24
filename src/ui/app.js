@@ -8,32 +8,10 @@ const App = {
       try { StorageManager.init(); } catch (e2) { console.error(e2); }
     }
     try { this.applyBranding(); } catch (e) { console.warn('branding', e); }
-    try { this.applyThemeMode((Store.get().settings || {}).theme || 'dark'); } catch (e) { console.warn('theme', e); }
     this.bindEvents();
-    try { this.bindEmblemGestures(); } catch (e) { console.warn("emblem", e); }
-    try {
-      if (this._cdTimer) clearInterval(this._cdTimer);
-      this._cdTimer = setInterval(() => { try { this.updateTrainingCountdown(); } catch (_) {} }, 30000);
-    } catch (_) {}
     try { /* плаваюча навігація вимкнена — статичний сайдбар справа */ } catch (e) { console.warn('nav', e); }
     try { if (typeof AuthManager !== 'undefined') AuthManager.init(); } catch (e) { console.warn('Auth', e); }
     try { if (typeof AuthManager !== 'undefined') { AuthManager._resolveRole(); AuthManager._applyUiRole(); } } catch (_) {}
-    // Server HMAC validation of Telegram initData (async — does not block first paint)
-    try {
-      if (typeof AuthManager !== 'undefined' && AuthManager.validateWithServer) {
-        AuthManager.validateWithServer().then((res) => {
-          try {
-            if (res && res.source === 'server' && res.ok) {
-              this.applyBranding && this.applyBranding();
-              this.renderCurrent && this.renderCurrent();
-            } else if (res && res.source === 'error' && (res.error === 'hash_mismatch' || res.error === 'auth_date_expired')) {
-              if (typeof Toast !== 'undefined') Toast.show('Сесію Telegram не підтверджено', 'warn');
-              this.renderCurrent && this.renderCurrent();
-            }
-          } catch (_) {}
-        }).catch(() => {});
-      }
-    } catch (_) {}
     try { BoardEngine.init(); } catch (e) { console.warn('board', e); }
     const view = (Store.get().ui && Store.get().ui.view) || 'dashboard';
     if (view === 'board') this.allowBoardOnce('logo');
@@ -187,10 +165,9 @@ const App = {
     if (!document._msIoCapture) {
       document._msIoCapture = true;
       document.addEventListener('click', (e) => {
-        const corporateExp = e.target.closest('[data-action="export-corporate"]');
         const exp = e.target.closest('#btnExportJson, [data-io="export"], [data-action="export"]');
         const imp = e.target.closest('#btnImportJson, [data-io="import"], [data-action="import-trigger"]');
-        if (!exp && !imp && !corporateExp) return;
+        if (!exp && !imp) return;
 
         e.preventDefault();
         e.stopPropagation();
@@ -201,18 +178,8 @@ const App = {
           if (typeof StorageManager !== 'undefined') StorageManager.beginIoLock(5000);
         } catch (_) {}
 
-        if (corporateExp) {
-          if (typeof AuthManager !== 'undefined' && !AuthManager.isCoach()) {
-            Toast.show('Корпоративний файл може створити лише тренер', 'warn');
-            return;
-          }
-          try { StorageManager.exportCorporateFile(); }
-          catch (err) { Toast.show('Корпоративний файл: ' + (err.message || err), 'err'); }
-          return;
-        }
-
         if (exp) {
-          // Експорт резервної копії — лише тренер
+          // Експорт — ТІЛЬКИ тренер @Serdiuk_Artem
           if (typeof AuthManager !== 'undefined' && !AuthManager.isCoach()) {
             Toast.show('Експорт JSON доступний лише тренеру', 'warn');
             return;
@@ -237,222 +204,6 @@ const App = {
     }
 
     try { StorageManager._ensureImportInput(); } catch (_) {}
-  },
-
-  
-  applyThemeMode(theme) {
-    const t = theme === 'light' ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', t);
-    document.body.setAttribute('data-theme', t);
-    try {
-      const s = Store.get().settings;
-      s.theme = t;
-      StorageManager.save();
-    } catch (_) {}
-    try {
-      if (typeof TelegramManager !== 'undefined' && TelegramManager.tg) {
-        // не форсимо TG theme — лише наш UI
-      }
-    } catch (_) {}
-  },
-
-  toggleTheme() {
-    const cur = document.documentElement.getAttribute('data-theme') || (Store.get().settings || {}).theme || 'dark';
-    this.applyThemeMode(cur === 'light' ? 'dark' : 'light');
-    try { Toast.show(cur === 'light' ? 'Темна тема' : 'Світла тема', 'ok'); } catch (_) {}
-  },
-
-  /** Пасхалка: тап по «Тренер» → FIFA-картка тренера (режим перегляду) */
-  
-  openStopwatch() {
-    document.querySelectorAll('.sw-sheet-backdrop').forEach(el => el.remove());
-    const backdrop = document.createElement('div');
-    backdrop.className = 'sw-sheet-backdrop tg-sheet-backdrop';
-    backdrop.innerHTML = `
-      <div class="tg-sheet sw-sheet" role="dialog" aria-label="Секундомір">
-        <div class="tg-sheet-handle"></div>
-        <div class="tg-sheet-title">Секундомір</div>
-        <div class="sw-display">
-          <div class="sw-time" id="swSession">00:00</div>
-          <div class="sw-label">Сесія</div>
-        </div>
-        <div class="sw-actions">
-          <button type="button" class="sw-btn" data-action="timer-start">▶ Старт</button>
-          <button type="button" class="sw-btn" data-action="timer-pause">⏸ Пауза</button>
-          <button type="button" class="sw-btn" data-action="timer-reset">↻ Скинути</button>
-          <button type="button" class="sw-btn" data-action="timer-add" data-sec="30">+30 с</button>
-        </div>
-        <div class="sw-display sw-display-sm">
-          <div class="sw-time" id="swEx">00:00</div>
-          <div class="sw-label">Вправа</div>
-        </div>
-        <div class="sw-actions">
-          <button type="button" class="sw-btn" data-action="extimer-start">▶</button>
-          <button type="button" class="sw-btn" data-action="extimer-pause">⏸</button>
-          <button type="button" class="sw-btn" data-action="extimer-reset">↻</button>
-        </div>
-        <button type="button" class="tg-sheet-btn tg-sheet-cancel" data-sw="close">Закрити</button>
-      </div>`;
-    document.body.appendChild(backdrop);
-    requestAnimationFrame(() => backdrop.classList.add('show'));
-
-    const sync = () => {
-      try {
-        const a = document.getElementById('timerMain');
-        const b = document.getElementById('timerEx');
-        const sa = document.getElementById('swSession');
-        const sb = document.getElementById('swEx');
-        if (a && sa) sa.textContent = a.textContent || '00:00';
-        if (b && sb) sb.textContent = b.textContent || '00:00';
-      } catch (_) {}
-    };
-    sync();
-    const iv = setInterval(sync, 250);
-    const close = () => {
-      clearInterval(iv);
-      backdrop.classList.remove('show');
-      setTimeout(() => backdrop.remove(), 220);
-    };
-    backdrop.addEventListener('click', (e) => {
-      if (e.target === backdrop || e.target.closest('[data-sw="close"]')) close();
-    });
-    try { TelegramManager.haptic && TelegramManager.haptic('light'); } catch (_) {}
-  },
-
-  openCoachCard() {
-    const name = (typeof AuthManager !== 'undefined' && AuthManager.displayName)
-      ? AuthManager.displayName() : 'Artem Serdiuk';
-    // Priority: settings coach photo → Telegram user photo → linked player photo
-    let photo = '';
-    try {
-      const st = (typeof Store !== 'undefined' && Store.get()) || {};
-      photo = st.coachPhoto || (st.settings && st.settings.coachPhoto) || '';
-      if (!photo && typeof AuthManager !== 'undefined' && AuthManager.user) {
-        photo = AuthManager.user.photo_url || AuthManager.user.photoUrl || '';
-      }
-      if (!photo && typeof TelegramManager !== 'undefined' && TelegramManager.getUserPhotoUrl) {
-        photo = TelegramManager.getUserPhotoUrl() || '';
-      }
-      if (!photo && typeof TelegramManager !== 'undefined' && TelegramManager.tg) {
-        const u = TelegramManager.tg.initDataUnsafe && TelegramManager.tg.initDataUnsafe.user;
-        if (u && u.photo_url) photo = u.photo_url;
-      }
-    } catch (_) {}
-    const initials = (name || 'AS').split(/\s+/).map(p => p[0] || '').join('').slice(0, 2).toUpperCase() || 'AS';
-    const photoHtml = photo
-      ? '<img src="'+String(photo).replace(/"/g,'&quot;')+'" alt="" referrerpolicy="no-referrer" onerror="this.style.display=\'none\';this.nextElementSibling&&(this.nextElementSibling.style.display=\'grid\')"/><div class="cc-photo-ph" style="display:none">'+initials+'</div>'
-      : '<div class="cc-photo-ph">'+initials+'</div>';
-    document.querySelectorAll('.coach-card-overlay').forEach(el => el.remove());
-    const ov = document.createElement('div');
-    ov.className = 'coach-card-overlay';
-    ov.innerHTML = `
-      <div class="coach-card-fifa" role="dialog" aria-label="Картка тренера">
-        <div class="cc-glow"></div>
-        <div class="cc-frame">
-          <div class="cc-rating">94</div>
-          <div class="cc-pos">HEAD COACH</div>
-          <div class="cc-photo">${photoHtml}</div>
-          <div class="cc-club">METALIST STUTTGART</div>
-          <div class="cc-name">${(typeof sanitize==='function'?sanitize(name):name).toUpperCase()}</div>
-          <div class="cc-stats">
-            <div class="cc-stat"><span>Leadership</span><b>96</b></div>
-            <div class="cc-stat"><span>Tactics</span><b>95</b></div>
-            <div class="cc-stat"><span>Motivation</span><b>94</b></div>
-            <div class="cc-stat"><span>Mentality</span><b>93</b></div>
-          </div>
-          <div class="cc-traits">
-            <span>★ Master Tactician</span>
-            <span>◆ Player Developer</span>
-            <span>◆ Winning Mentality</span>
-          </div>
-          <button type="button" class="cc-back" data-action="close-coach-card">Повернутися до керування</button>
-        </div>
-      </div>`;
-    document.body.appendChild(ov);
-    requestAnimationFrame(() => ov.classList.add('show'));
-    document.body.classList.add('coach-card-mode');
-    try { TelegramManager.haptic && TelegramManager.haptic('medium'); } catch (_) {}
-  },
-
-  closeCoachCard() {
-    document.querySelectorAll('.coach-card-overlay').forEach(el => {
-      el.classList.remove('show');
-      setTimeout(() => el.remove(), 280);
-    });
-    document.body.classList.remove('coach-card-mode');
-  },
-
-  
-  bindEmblemGestures() {
-    const el = document.getElementById('club-logo-btn');
-    if (!el || el._emblemBound) return;
-    el._emblemBound = true;
-    const HOLD_MS = 5000;
-    let timer = null;
-    let startX = 0, startY = 0, moved = false;
-    const progress = document.getElementById('emblemProgress');
-
-    const clear = () => {
-      if (timer) { clearTimeout(timer); timer = null; }
-      el.classList.remove('holding');
-      if (progress) { progress.hidden = true; progress.style.setProperty('--p', '0'); }
-    };
-
-    const onDown = (e) => {
-      if (e.button != null && e.button !== 0) return;
-      moved = false;
-      startX = e.clientX ?? (e.touches && e.touches[0]?.clientX) ?? 0;
-      startY = e.clientY ?? (e.touches && e.touches[0]?.clientY) ?? 0;
-      el.classList.add('holding');
-      if (progress) {
-        progress.hidden = false;
-        progress.style.setProperty('--p', '0');
-        // CSS animation driven by holding class
-      }
-      timer = setTimeout(() => {
-        timer = null;
-        el.classList.remove('holding');
-        if (progress) progress.hidden = true;
-        // Easter egg: 5s hold
-        try { this.openCoachCard(); } catch (err) { console.error(err); }
-        try { TelegramManager.haptic && TelegramManager.haptic('success'); } catch (_) {}
-      }, HOLD_MS);
-    };
-
-    const onMove = (e) => {
-      if (!timer) return;
-      const x = e.clientX ?? (e.touches && e.touches[0]?.clientX) ?? startX;
-      const y = e.clientY ?? (e.touches && e.touches[0]?.clientY) ?? startY;
-      if (Math.abs(x - startX) > 12 || Math.abs(y - startY) > 12) {
-        moved = true;
-        clear();
-      }
-    };
-
-    const onUp = (e) => {
-      const wasHolding = !!timer;
-      const didMove = moved;
-      clear();
-      // short tap → board (only if not long-press completed and not moved)
-      if (wasHolding && !didMove) {
-        e.preventDefault();
-        e.stopPropagation();
-        try {
-          this.allowBoardOnce && this.allowBoardOnce('logo');
-          this.openDefaultBoard ? this.openDefaultBoard() : this.navigate('board');
-        } catch (err) {
-          console.error(err);
-          try { this.navigate('board'); } catch (_) {}
-        }
-        try { TelegramManager.haptic && TelegramManager.haptic('light'); } catch (_) {}
-      }
-    };
-
-    el.addEventListener('pointerdown', onDown);
-    el.addEventListener('pointermove', onMove);
-    el.addEventListener('pointerup', onUp);
-    el.addEventListener('pointercancel', clear);
-    el.addEventListener('pointerleave', (e) => { if (timer) clear(); });
   },
 
   openDefaultBoard() {
@@ -505,14 +256,7 @@ const App = {
       if (badge) {
         if (typeof AuthManager !== 'undefined') {
           const role = AuthManager.roleLabel();
-          let name = AuthManager.displayName() || '';
-          name = String(name)
-            .replace(/[\u200B-\u200D\uFEFF\u2060\u00AD]/g,'')
-            .replace(/[\uFE00-\uFE0F]/g,'')
-            .replace(/[\u2600-\u27BF]/g,'')
-            .replace(/[\uD83C-\uDBFF][\uDC00-\uDFFF]/g,'')
-            .replace(/[\u2600-\u26FF]/g,'')
-            .replace(/\s+/g,' ').trim();
+          const name = AuthManager.displayName();
           badge.innerHTML = '<span class="auth-role">' + sanitize(role) + '</span>: ' + sanitize(name);
           badge.title = AuthManager.user ? ('Telegram ID: ' + AuthManager.user.id) : 'Локальний режим';
         } else {
@@ -526,7 +270,7 @@ const App = {
     document.documentElement.style.setProperty('--club-accent', s.accent);
     const logo = document.getElementById('clubLogo');
     if (logo) {
-      if (s.logoData && String(s.logoData).startsWith('data:image/')) {
+      if (s.logoData) {
         logo.innerHTML = '<img src="' + s.logoData + '" alt="logo">';
       } else {
         logo.textContent = s.clubShort || 'МШ';
@@ -661,11 +405,6 @@ const App = {
   },
 
   initBoardToolbarDrag() {
-    /* ORDER_LOCK_NO_DRAG: top/bottom toolbars are static in flex layout */
-    if (document.getElementById('boardToolbarTop') || document.getElementById('boardToolbarBottom')) {
-      return;
-    }
-
     // Docked top/bottom bars — без плаваючого drag
     if (document.getElementById('boardToolbarTop') || document.getElementById('boardToolbarBottom')) return;
     const tb = document.getElementById('boardToolbar');
@@ -737,34 +476,10 @@ const App = {
 
   _bindPlayerCompare() {
     const sel = document.getElementById('playerCompareSel');
-    if (!sel) return;
-    // allow rebind after modal re-render
-    if (sel._msCmpBound) return;
-    sel._msCmpBound = true;
+    if (!sel || sel._bound) return;
+    sel._bound = true;
     sel.addEventListener('change', () => {
-      const oid = sel.value || '';
-      try {
-        window.__playerCompareId = oid;
-        window.__coachCompareId = oid;
-      } catch (_) {}
-      // Якщо відкрита картка тренера — оновити модалку
-      try {
-        const modalBody = document.getElementById('modalBody');
-        if (modalBody && modalBody.querySelector('.coach-player-view') && typeof Views !== 'undefined' && Views.coachPlayerDetail) {
-          const btn = modalBody.querySelector('[data-player-id]');
-          const pid = btn && btn.getAttribute('data-player-id');
-          if (pid) {
-            const p = (Store.get().players || []).find(x => x.id === pid);
-            const title = 'Картка гравця · ' + ((p && (p.lastName || p.firstName)) || '');
-            if (typeof Modal !== 'undefined' && Modal.open) {
-              Modal.open(title, '<div class="fifa-modal-wrap">' + Views.coachPlayerDetail(pid) + '</div>', [{ label: 'Закрити', cls: 'btn-s', action: 'cancel' }]);
-              // re-bind select after re-open
-              setTimeout(() => { try { const s2 = document.getElementById('playerCompareSel'); if (s2) { s2._msCmpBound = false; App._bindPlayerCompare(); } } catch (_) {} }, 30);
-              return;
-            }
-          }
-        }
-      } catch (_) {}
+      try { window.__playerCompareId = sel.value || ''; } catch (_) {}
       try { this.renderCurrent(); } catch (_) {}
     });
   },
@@ -802,20 +517,6 @@ const App = {
   },
 
   navigate(view) {
-    // Aliases for dashboard pills / legacy links
-    if (view === 'schemes' || view === 'scheme') view = 'tactics';
-    if (view === 'stats' || view === 'statistics') view = 'analytics';
-    if (view === 'squad' || view === 'roster') view = 'players';
-    // Role-based navigation guard. UI hiding is convenience, not the permission check.
-    try {
-      if (typeof AuthManager !== 'undefined' && !AuthManager.isCoach()) {
-        const permissionView = view === 'tactics' ? 'board' : view;
-        if (!AuthManager.can('view-' + permissionView)) {
-          Toast.show('Цей розділ недоступний для ролі «' + AuthManager.roleLabel() + '»', 'warn');
-          return;
-        }
-      }
-    } catch (_) {}
     // iOS: після file picker focus може «клікнути» логотип — блокуємо
     try {
       if (typeof StorageManager !== 'undefined' && StorageManager.isIoLocked && StorageManager.isIoLocked()) {
@@ -877,19 +578,6 @@ const App = {
       }
       try { TelegramManager.showBackButton(); } catch (_) {}
       try { TelegramManager.haptic('light'); } catch (_) {}
-      // iOS Telegram: viewport settles after expand — refit stage 2×
-      const refit = () => {
-        try {
-          if (typeof BoardEngine !== 'undefined') {
-            BoardEngine._sizeStageToPitch && BoardEngine._sizeStageToPitch();
-            BoardEngine.applyCamera && BoardEngine.applyCamera();
-            BoardEngine.renderTokens && BoardEngine.renderTokens();
-            BoardEngine.renderDrawings && BoardEngine.renderDrawings();
-            BoardEngine.renderToolbar && BoardEngine.renderToolbar();
-          }
-        } catch (_) {}
-      };
-      requestAnimationFrame(() => { refit(); setTimeout(refit, 120); setTimeout(refit, 400); });
     } else {
       // Вихід з дошки — завжди знімаємо FS/board-only, інакше UI «мертвий»
       try { if (typeof BoardEngine !== 'undefined' && BoardEngine.leaveBoardMode) BoardEngine.leaveBoardMode(); } catch (_) {}
@@ -950,87 +638,7 @@ const App = {
     this._afterPanelToggle();
   },
 
-  formatNextTr(t) {
-    if (!t) return '—';
-    let name = String(t.name || 'Тр.').replace(/^Тренування\s*/i, 'Тр. ');
-    if (name.length > 16) name = name.slice(0, 14) + '…';
-    return name;
-  },
-  updateTrainingCountdown() {
-    try {
-      const el = document.getElementById('nextTr');
-      const sub = document.getElementById('nextTrCountdown');
-      const s = Store.get();
-      const next = (s.trainings || []).filter(x => x.status === 'planned' && x.date >= (typeof today === 'function' ? today() : '')).sort((a, b) => (a.date || '').localeCompare(b.date || '') || String(a.time||'').localeCompare(String(b.time||'')))[0];
-      if (!next) {
-        if (el) el.textContent = '—';
-        if (sub) sub.textContent = '';
-        return;
-      }
-      const name = this.formatNextTr ? this.formatNextTr(next) : (next.name || 'Тр.');
-      if (el) { el.textContent = name; el.title = (next.name || '') + ' · ' + (next.date || '') + ' ' + (next.time || ''); }
-      // countdown
-      try {
-        const [hh, mm] = String(next.time || '18:00').split(':').map(Number);
-        const dt = new Date(next.date + 'T00:00:00');
-        if (!isNaN(hh)) dt.setHours(hh || 0, mm || 0, 0, 0);
-        const ms = dt.getTime() - Date.now();
-        let cd = '';
-        if (ms > 0) {
-          const h = Math.floor(ms / 3600000);
-          const m = Math.floor((ms % 3600000) / 60000);
-          cd = h > 48 ? (Math.floor(h/24) + 'д') : (h + 'г ' + m + 'хв');
-        } else if (ms > -7200000) cd = 'зараз';
-        else cd = '';
-        if (sub) sub.textContent = cd ? ('через ' + cd) : (next.date || '');
-      } catch (_) { if (sub) sub.textContent = next.date || ''; }
-    } catch (_) {}
-  },
-  updateNextTrLabel() {
-    try {
-      const el = document.getElementById('nextTr');
-      if (!el) return;
-      const s = Store.get();
-      const next = (s.trainings || []).filter(x => x.status === 'planned' && x.date >= (typeof today === 'function' ? today() : '')).sort((a, b) => (a.date || '').localeCompare(b.date || ''))[0];
-      el.textContent = next ? this.formatNextTr(next) : '—';
-      el.title = next ? ((next.name || '') + ' · ' + (next.date || '')) : '';
-    } catch (_) {}
-  },
-  checkBirthdays() {
-    try {
-      const todayStr = (typeof today === 'function') ? today() : new Date().toISOString().slice(0,10);
-      const md = todayStr.slice(5); // MM-DD
-      const list = (Store.get().players || []).filter(p => p.birthDate && String(p.birthDate).slice(5,10) === md);
-      if (!list.length) return;
-      const names = list.map(p => ((p.firstName||'') + ' ' + (p.lastName||'')).trim() || ('#'+p.number)).join(', ');
-      const html = `<div class="bday-greet">
-        <div class="bday-balloon">🎂</div>
-        <h2>З Днем народження!</h2>
-        <p>${sanitize(names)}</p>
-        <p class="note-sm">МЕТАЛІСТ ШТУТГАРТ вітає</p>
-      </div>`;
-      if (typeof Modal !== 'undefined' && Modal.open) {
-        Modal.open('Свято', html, [{ label: '🎉 Дякуємо', cls: 'btn-p', action: 'cancel' }]);
-      }
-      try { TelegramManager.haptic && TelegramManager.haptic('success'); } catch (_) {}
-    } catch (_) {}
-  },
-  syncRoleClass() {
-    try {
-      document.body.classList.remove('role-coach', 'role-player', 'role-guest');
-      if (typeof AuthManager !== 'undefined') {
-        if (AuthManager.isCoach && AuthManager.isCoach()) document.body.classList.add('role-coach');
-        else if (AuthManager.isPlayer && AuthManager.isPlayer()) document.body.classList.add('role-player');
-        else document.body.classList.add('role-guest');
-      }
-    } catch (_) {}
-  },
   renderCurrent() {
-    try { this.syncRoleClass(); } catch (_) {}
-    try { if (!this._bdayChecked) { this._bdayChecked = true; this.checkBirthdays(); } } catch (_) {}
-    try { this.updateTrainingCountdown(); } catch (_) {}
-    try { this.updateNextTrLabel(); } catch (_) {}
-
     try {
       const v = (Store.get().ui && Store.get().ui.view) || 'dashboard';
       document.body.classList.toggle('board-on', v === 'board');
@@ -1087,35 +695,21 @@ const App = {
   updateClock() {
     const now = new Date();
     const el = document.getElementById('clock');
-    // Компактно: дата + HH:MM (без секунд — не обрізається в пігулці)
-    if (el) {
-      const d = now.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit' });
-      const t = now.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
-      el.innerHTML = '<strong>' + d + '</strong> · ' + t;
-    }
+    if (el) el.innerHTML = `<strong>${fmtDate(now)}</strong> · ${now.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
     const s = Store.get();
-    const next = (s.trainings || []).filter(t => t.status === 'planned' && t.date >= today()).sort((a, b) => a.date.localeCompare(b.date))[0];
+    const next = s.trainings.filter(t => t.status === 'planned' && t.date >= today()).sort((a, b) => a.date.localeCompare(b.date))[0];
     const nt = document.getElementById('nextTr');
-    const cdEl = document.getElementById('nextTrCountdown');
-    if (next) {
-      const short = this.formatNextTr ? this.formatNextTr(next) : (next.name || 'Тр.');
-      if (nt) {
-        nt.textContent = short;
-        nt.title = (next.name || '') + ' · ' + (next.date || '') + (next.time ? ' ' + next.time : '');
-      }
-      if (cdEl) {
-        try {
-          const dt = new Date(next.date + 'T' + (next.time || '10:00'));
-          const diff = dt - now;
-          if (diff > 0) {
-            const h = Math.floor(diff / 3600000), m = Math.floor((diff % 3600000) / 60000);
-            cdEl.textContent = 'через ' + h + 'г ' + m + 'хв';
-          } else cdEl.textContent = next.date || '';
-        } catch (_) { cdEl.textContent = next.date || ''; }
-      }
-    } else {
-      if (nt) { nt.textContent = '—'; nt.title = ''; }
-      if (cdEl) cdEl.textContent = '';
+    if (nt) {
+      if (next) {
+        const dt = new Date(next.date + 'T' + (next.time || '10:00'));
+        const diff = dt - now;
+        let cd = '—';
+        if (diff > 0) {
+          const h = Math.floor(diff / 3600000), m = Math.floor((diff % 3600000) / 60000);
+          cd = h + 'г ' + m + 'хв';
+        }
+        nt.innerHTML = `Наступне: <strong>${sanitize(next.name)}</strong> (${cd})`;
+      } else nt.innerHTML = 'Наступне: <strong>—</strong>';
     }
   },
 
@@ -1551,32 +1145,6 @@ const App = {
       const action = t.dataset.action;
       const view = t.dataset.view;
 
-      // Enforce read-only roles at the event boundary as well as in CSS.
-      const coachOnlyActions = new Set([
-        'new-training', 'new-myex', 'myex-from-board', 'new-diary', 'save-board-diary',
-        'save-b3-anim', 'save-anim-to-training', 'new-player', 'new-exercise', 'new-match',
-        'new-event', 'save-settings', 'save-rbac', 'upload-club-logo', 'upload-coach-photo',
-        'toggle-coach-tools', 'reset-all', 'export-corporate'
-      ]);
-      if (typeof AuthManager !== 'undefined' && !AuthManager.isCoach() && action && coachOnlyActions.has(action)) {
-        e.preventDefault();
-        e.stopPropagation();
-        Toast.show('Цю дію може виконати лише тренер', 'warn');
-        return;
-      }
-      if (typeof AuthManager !== 'undefined' && !AuthManager.isCoach() && t.dataset.tool) {
-        e.preventDefault();
-        e.stopPropagation();
-        Toast.show('Тактична дошка доступна лише для перегляду', 'warn');
-        return;
-      }
-      if (typeof AuthManager !== 'undefined' && !AuthManager.isCoach() && (t.dataset.b3Phase || t.dataset.b3Rot || t.dataset.boardTpl || t.dataset.scheme || t.dataset.loadBoard)) {
-        e.preventDefault();
-        e.stopPropagation();
-        Toast.show('Змінювати тактичні схеми може лише тренер', 'warn');
-        return;
-      }
-
       // Редагування / CRUD — ніколи не відкривають дошку (без stopImmediatePropagation,
       // щоб цей самий listener міг обробити кнопки далі)
       if (t.dataset.editTraining || t.dataset.delTraining || t.dataset.dupTraining ||
@@ -1613,18 +1181,7 @@ const App = {
         App.navigate(view);
         return;
       }
-      if (t.dataset.tool) {
-        const ab = Store.get().activeBoard;
-        ab.tool = t.dataset.tool;
-        // Лоток НЕ закриваємо автоматично — тренер сам згортає ⊕
-        // (раніше на <900px лоток миттєво закривався → здавалося, що «не розгортається»)
-        BoardEngine.renderToolbar();
-        try {
-          document.body.classList.toggle('tools-tray-open', !!ab.toolsTrayOpen);
-        } catch (_) {}
-        try { TelegramManager.haptic && TelegramManager.haptic('selection'); } catch (_) {}
-        return;
-      }
+      if (t.dataset.tool) { Store.get().activeBoard.tool = t.dataset.tool; BoardEngine.renderToolbar(); return; }
       if (t.dataset.ai) {
         const map = { training: () => AIService.generateTraining(), warmup: () => AIService.generateExercise('warmup'),
           tech: () => AIService.generateExercise('tech'), tactical: () => AIService.generateExercise('tactical'),
@@ -1666,7 +1223,7 @@ const App = {
         e.stopPropagation();
         return;
       }
-      if (action === 'open-default-board' && !e.target.closest('.auth-role-btn, [data-action="coach-easter"]')) {
+      if (action === 'open-default-board') {
         e.preventDefault();
         e.stopPropagation();
         App.openDefaultBoard();
@@ -1747,184 +1304,10 @@ const App = {
         }
         return;
       }
-      if (action === 'edit-self-player') {
-        e.preventDefault(); e.stopPropagation();
-        try {
-          const me = AuthManager.getLinkedPlayer && AuthManager.getLinkedPlayer();
-          if (me && typeof Actions !== 'undefined' && Actions.editPlayer) Actions.editPlayer(me.id);
-          else Toast.show('Профіль не прив\'язано', 'warn');
-        } catch (_) {}
-        return;
-      }
-      
-      if (action === 'upload-club-logo' || action === 'upload-coach-photo') {
-        e.preventDefault(); e.stopPropagation();
-        if (typeof AuthManager !== 'undefined' && AuthManager.isCoach && !AuthManager.isCoach()) {
-          Toast.show('Лише тренер', 'warn'); return;
-        }
-        const isCoach = action === 'upload-coach-photo';
-        const input = document.getElementById(isCoach ? 'settingsCoachPhotoInput' : 'settingsLogoInput')
-          || (() => {
-            const i = document.createElement('input');
-            i.type = 'file'; i.accept = 'image/*'; i.hidden = true;
-            document.body.appendChild(i);
-            return i;
-          })();
-        input.onchange = () => {
-          const file = input.files && input.files[0];
-          if (!file) return;
-          if (file.size > 2.5e6) { Toast.show('Максимум 2.5 МБ', 'warn'); return; }
-          const reader = new FileReader();
-          reader.onload = () => {
-            const data = reader.result;
-            const s = Store.get().settings;
-            if (isCoach) s.coachPhoto = data;
-            else s.logoData = data;
-            try { StorageManager.save(); } catch (_) {}
-            try { App.applyBranding && App.applyBranding(); } catch (_) {}
-            try { App.renderCurrent && App.renderCurrent(); } catch (_) {}
-            Toast.show(isCoach ? 'Фото тренера оновлено' : 'Логотип оновлено', 'ok');
-          };
-          reader.readAsDataURL(file);
-          input.value = '';
-        };
-        input.click();
-        return;
-      }
-
-      if (action === 'open-fifa-card' || action === 'open-player-card') {
-        e.preventDefault(); e.stopPropagation();
-        const pid = (t.dataset && t.dataset.playerId) || t.getAttribute('data-player-id');
-        const p = (Store.get().players || []).find(x => x.id === pid);
-        if (!p) return;
-        try { TelegramManager.haptic && TelegramManager.haptic('light'); } catch (_) {}
-        // Тренер бачить повну картку «як гравець» + інструменти; гравець — лише FIFA
-        const asCoach = (typeof AuthManager !== 'undefined' && AuthManager.isCoach && AuthManager.isCoach());
-        if (asCoach && typeof Views !== 'undefined' && Views.coachPlayerDetail) {
-          const html = Views.coachPlayerDetail(p.id);
-          if (typeof Modal !== 'undefined' && Modal.open) {
-            Modal.open('Картка гравця · ' + (p.lastName || p.firstName || ''), '<div class="fifa-modal-wrap">' + html + '</div>', [{ label: 'Закрити', cls: 'btn-s', action: 'cancel' }]);
-            setTimeout(() => { try { const s2 = document.getElementById('playerCompareSel'); if (s2) s2._msCmpBound = false; App._bindPlayerCompare(); } catch (_) {} }, 40);
-          }
-        } else if (typeof Views !== 'undefined' && Views._fifaCard) {
-          const st = Views._playerStats ? Views._playerStats(p.id) : {};
-          const html = Views._fifaCard(p, st);
-          if (typeof Modal !== 'undefined' && Modal.open) {
-            Modal.open('FIFA-картка', '<div class="fifa-modal-wrap">' + html + '</div>', [{ label: 'Закрити', cls: 'btn-s', action: 'cancel' }]);
-          }
-        }
-        return;
-      }
-      if (action === 'player-compare') {
-        e.preventDefault(); e.stopPropagation();
-        const sel = document.getElementById('playerCompareSel');
-        const oid = sel ? sel.value : (t.value || '');
-        if (typeof window !== 'undefined') {
-          window.__playerCompareId = oid;
-          window.__coachCompareId = oid;
-        }
-        // re-render if coach modal context
-        try {
-          const modalBody = document.getElementById('modalBody');
-          if (modalBody && modalBody.querySelector('.coach-player-view')) {
-            const pid = (modalBody.querySelector('[data-player-id]') || {}).getAttribute?.('data-player-id');
-            // find player from fifa num - better from open state
-          }
-        } catch (_) {}
-        try { App.renderCurrent(); } catch (_) {}
-        return;
-      }
-      if (action === 'award-gift') {
-        e.preventDefault(); e.stopPropagation();
-        if (typeof AuthManager !== 'undefined' && AuthManager.isCoach && !AuthManager.isCoach()) {
-          Toast.show('Лише тренер може нагороджувати', 'warn'); return;
-        }
-        const pid = t.dataset.playerId;
-        const gid = t.dataset.giftId;
-        if (pid && gid && typeof CoachTools !== 'undefined' && CoachTools.awardGift) {
-          CoachTools.awardGift(pid, gid, '');
-          // refresh modal if open
-          if (typeof Views !== 'undefined' && Views.coachPlayerDetail && typeof Modal !== 'undefined' && Modal.open) {
-            const p = (Store.get().players || []).find(x => x.id === pid);
-            Modal.open('Картка гравця · ' + ((p && (p.lastName || p.firstName)) || ''), '<div class="fifa-modal-wrap">' + Views.coachPlayerDetail(pid) + '</div>', [{ label: 'Закрити', cls: 'btn-s', action: 'cancel' }]);
-          }
-        }
-        return;
-      }
-      if (action === 'add-moment') {
-        e.preventDefault(); e.stopPropagation();
-        if (typeof AuthManager !== 'undefined' && AuthManager.isCoach && !AuthManager.isCoach()) {
-          Toast.show('Лише тренер', 'warn'); return;
-        }
-        const pid = t.dataset.playerId;
-        const text = window.prompt('Памʼятний момент з тренування (короткий підпис):', '');
-        if (text && pid && typeof CoachTools !== 'undefined' && CoachTools.addMoment) {
-          CoachTools.addMoment(pid, text, null);
-          if (typeof Views !== 'undefined' && Views.coachPlayerDetail && typeof Modal !== 'undefined' && Modal.open) {
-            const p = (Store.get().players || []).find(x => x.id === pid);
-            Modal.open('Картка гравця · ' + ((p && (p.lastName || p.firstName)) || ''), '<div class="fifa-modal-wrap">' + Views.coachPlayerDetail(pid) + '</div>', [{ label: 'Закрити', cls: 'btn-s', action: 'cancel' }]);
-          }
-        }
-        return;
-      }
-      if (action === 'attach-gift') {
-        e.preventDefault(); e.stopPropagation();
-        const gid = t.dataset.giftId;
-        if (gid && typeof CoachTools !== 'undefined' && CoachTools.attachGift) CoachTools.attachGift(gid);
-        try { if (typeof App !== 'undefined' && App.renderCurrent) App.renderCurrent(); } catch (_) {}
-        return;
-      }
-      if (action === 'edit-player-form') {
-        e.preventDefault(); e.stopPropagation();
-        const pid = t.dataset.playerId;
-        if (pid && typeof Actions !== 'undefined' && Actions.editPlayer) Actions.editPlayer(pid);
-        return;
-      }
-      if (action === 'open-stopwatch') {
-        e.preventDefault(); e.stopPropagation();
-        return this.openStopwatch();
-      }
-      if (action === 'coach-easter') {
-        e.preventDefault(); e.stopPropagation();
-        return this.openCoachCard();
-      }
-      if (action === 'close-coach-card') {
-        e.preventDefault(); e.stopPropagation();
-        return this.closeCoachCard();
-      }
-      if (action === 'toggle-theme') {
-        e.preventDefault(); e.stopPropagation();
-        const set = t.dataset.themeSet;
-        if (set === 'light' || set === 'dark') return this.applyThemeMode(set);
-        return this.toggleTheme();
-      }
-      if (action === 'toggle-tools-tray') {
-        e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
-        const ab = Store.get().activeBoard;
-        if (!ab) return;
-        ab.toolsTrayOpen = !ab.toolsTrayOpen;
-        if (ab.toolsTrayOpen) ab.paletteOpen = false;
-        document.body.classList.toggle('tools-tray-open', !!ab.toolsTrayOpen);
-        // Re-render toolbar so tray HTML matches state, then force-open portal
-        try { BoardEngine.renderToolbar && BoardEngine.renderToolbar(); } catch (_) {}
-        const tray = document.getElementById('btbToolsTray');
-        if (tray) {
-          tray.classList.toggle('open', !!ab.toolsTrayOpen);
-          tray.setAttribute('aria-hidden', ab.toolsTrayOpen ? 'false' : 'true');
-          // Portal to body so overflow:hidden parents cannot clip it (iOS Telegram)
-          if (ab.toolsTrayOpen && tray.parentElement !== document.body) {
-            document.body.appendChild(tray);
-          }
-        }
-        try { TelegramManager.haptic && TelegramManager.haptic('light'); } catch (_) {}
-        return;
-      }
       if (action === 'toggle-palette') {
         e.preventDefault(); e.stopPropagation();
         const ab = Store.get().activeBoard;
         ab.paletteOpen = !ab.paletteOpen;
-        if (ab.paletteOpen) ab.toolsTrayOpen = false;
-        document.body.classList.toggle('tools-tray-open', false);
         try { BoardEngine.renderToolbar(); } catch (_) {}
         return;
       }

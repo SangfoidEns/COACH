@@ -498,7 +498,6 @@ const Actions = {
         <div class="fgr"><label>Готовність %</label><input type="number" id="plR" value="95" min="0" max="100"></div>
         <div class="fgr"><label>Група</label><select id="plG"><option value="main">Основний</option><option value="reserve">Резерв</option><option value="gk">Воротарі</option></select></div>
         <div class="fgr full"><label class="chk-label"><input type="checkbox" id="plCap"> Капітан команди</label></div>
-        <div class="fgr"><label>Дата народження</label><input type="date" id="plBirth"></div>
         <div class="fgr"><label>Telegram (@нік)</label><input id="plTg" placeholder="@username" autocomplete="off"></div>
         <div class="fgr"><label>Телефон</label><input id="plPhone" type="tel" placeholder="+49..." autocomplete="off"></div>
         <div class="fgr full"><label>Примітки</label><textarea id="plNo"></textarea></div>
@@ -529,8 +528,7 @@ const Actions = {
       load: 0, notes: document.getElementById('plNo')?.value || '',
       group: document.getElementById('plG')?.value || 'main', tags: [],
       telegramUsername: (document.getElementById('plTg')?.value || '').replace(/^@/, '').trim(),
-      phone: (document.getElementById('plPhone')?.value || '').trim(),
-      birthDate: document.getElementById('plBirth')?.value || ''
+      phone: (document.getElementById('plPhone')?.value || '').trim()
     });
     StorageManager.save();
     Modal.close();
@@ -571,12 +569,6 @@ const Actions = {
           <option value="reserve" ${p.group==='reserve'?'selected':''}>Резерв</option>
           <option value="gk" ${p.group==='gk'?'selected':''}>Воротарі</option>
         </select></div>
-        <div class="fgr"><label>Дата народження</label><input type="date" id="peBirth" value="${sanitize(p.birthDate||'')}"></div>
-        <div class="fgr full"><label>Фото гравця (URL або data)</label>
-          <input id="pePhoto" type="url" placeholder="https://… або завантажте файл нижче" value="${sanitize(p.photoUrl||'')}">
-          <input id="pePhotoFile" type="file" accept="image/*" style="margin-top:6px;font-size:12px">
-          ${p.photoUrl ? '<img src="'+sanitize(p.photoUrl)+'" alt="" style="max-height:64px;margin-top:6px;border-radius:8px">' : ''}
-        </div>
         <div class="fgr"><label>Telegram (@нік)</label><input id="peTg" value="${sanitize(p.telegramUsername||'')}" placeholder="@username" autocomplete="off"></div>
         <div class="fgr"><label>Телефон</label><input id="pePhone" type="tel" value="${sanitize(p.phone||'')}" placeholder="+49..." autocomplete="off"></div>
         <div class="fgr full"><label>Примітки / Індивідуальна програма</label><textarea id="peNo">${sanitize(p.notes||'')}</textarea></div>
@@ -607,11 +599,6 @@ const Actions = {
     p.notes = document.getElementById('peNo')?.value || '';
     p.telegramUsername = (document.getElementById('peTg')?.value || '').replace(/^@/, '').trim();
     p.phone = (document.getElementById('pePhone')?.value || '').trim();
-    const bd = document.getElementById('peBirth')?.value;
-    if (bd !== undefined) p.birthDate = bd || '';
-
-    const pePhotoVal = document.getElementById('pePhoto')?.value?.trim();
-    if (pePhotoVal) p.photoUrl = pePhotoVal;
     const wantCap = !!document.getElementById('peCap')?.checked;
     if (wantCap) {
       Store.get().players.forEach(x => { x.isCaptain = (x.id === p.id); });
@@ -633,35 +620,15 @@ const Actions = {
         if (wantCap && o.playerId && o.playerId !== p.id) o.isCaptain = false;
       });
     } catch (_) {}
-
-    const finish = () => {
-      try { StorageManager.save(); } catch (_) {}
-      Modal.close();
-      Toast.show(wantCap ? 'Збережено · Капітан' : (p.status === 'injured' ? 'Збережено · Травма' : 'Збережено'), 'ok');
-      App.renderCurrent();
-      try { if (typeof BoardEngine !== 'undefined') BoardEngine.render(); } catch (_) {}
-    };
-
-    const fileInp = document.getElementById('pePhotoFile');
-    const file = fileInp && fileInp.files && fileInp.files[0];
-    if (file && file.type.startsWith('image/')) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        try {
-          // compress large images: keep data URL if < 400kb else leave URL field
-          const data = String(reader.result || '');
-          if (data.length < 450000) p.photoUrl = data;
-          else Toast.show('Фото велике — збережено URL якщо був', 'warn');
-        } catch (_) {}
-        finish();
-      };
-      reader.onerror = () => finish();
-      reader.readAsDataURL(file);
-      return;
-    }
-    finish();
+    try { StorageManager.save(); } catch (_) {}
+    Modal.close();
+    Toast.show(wantCap ? 'Збережено · Капітан' : (p.status === 'injured' ? 'Збережено · Травма' : 'Збережено'), 'ok');
+    App.renderCurrent();
+    try { if (typeof BoardEngine !== 'undefined') BoardEngine.render(); } catch (_) {}
   },
 
+
+  /** Модалка відвідування: присутність + індивідуальний RPE */
   openAttendance(trainingId) {
     const t = Store.get().trainings.find(x => x.id === trainingId);
     if (!t) { Toast.show('Тренування не знайдено', 'warn'); return; }
@@ -936,35 +903,13 @@ const Actions = {
 
   saveSettings() {
     const s = Store.get().settings;
-    // IDs must match settings form in views.js
-    const clubEl = document.getElementById('setClubName') || document.getElementById('setName');
-    const shortEl = document.getElementById('setClubShort') || document.getElementById('setShort');
-    const priEl = document.getElementById('setPrimary') || document.getElementById('setPri');
-    const accEl = document.getElementById('setAccent') || document.getElementById('setAcc');
-    if (clubEl && clubEl.value.trim()) s.clubName = clubEl.value.trim();
-    if (shortEl && shortEl.value.trim()) s.clubShort = shortEl.value.trim();
-    if (priEl && priEl.value) s.primary = priEl.value;
-    if (accEl && accEl.value) s.accent = accEl.value;
-    const durEl = document.getElementById('setDur') || document.getElementById('setDefaultDuration');
-    const intEl = document.getElementById('setInt') || document.getElementById('setDefaultIntensity');
-    if (durEl) s.defaultDuration = +durEl.value || 90;
-    if (intEl) s.defaultIntensity = +intEl.value || 6;
-    const autoEl = document.getElementById('setAuto') || document.getElementById('setAutosave');
-    if (autoEl) s.autosave = autoEl.checked !== false;
-    // Social for guests
-    if (!s.social) s.social = {};
-    const tgCh = document.getElementById('setTgChannel')?.value?.trim();
-    const ig = document.getElementById('setIg')?.value?.trim();
-    const yt = document.getElementById('setYt')?.value?.trim();
-    if (tgCh != null) { s.social.telegram = tgCh; s.telegramChannel = tgCh; }
-    if (ig != null) { s.social.instagram = ig; s.instagram = ig; }
-    if (yt != null) { s.social.youtube = yt; s.youtube = yt; }
-    const gm = document.getElementById('setGuestMedia')?.value;
-    if (gm != null) {
-      s.guestMedia = gm.split(/\n/).map(x => x.trim()).filter(Boolean);
-      s.social.media = s.guestMedia;
-    }
-
+    s.clubName = document.getElementById('setName')?.value || s.clubName;
+    s.clubShort = document.getElementById('setShort')?.value || s.clubShort;
+    s.primary = document.getElementById('setPri')?.value || s.primary;
+    s.accent = document.getElementById('setAcc')?.value || s.accent;
+    s.defaultDuration = +document.getElementById('setDur')?.value || 90;
+    s.defaultIntensity = +document.getElementById('setInt')?.value || 6;
+    s.autosave = document.getElementById('setAuto')?.checked !== false;
     s.sound = document.getElementById('setSound')?.checked !== false;
     const logoFile = document.getElementById('setLogo')?.files?.[0];
     if (logoFile) {
