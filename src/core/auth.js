@@ -10,6 +10,7 @@ const AuthManager = {
   init() {
     try {
       this.user = this._readTelegramUser();
+      this.validationSource = 'unsafe';
       this._ensureRbacDefaults();
       this._resolveRole();
       this._applyUiRole();
@@ -21,6 +22,48 @@ const AuthManager = {
       this.role = 'coach';
     }
     return this;
+  },
+
+  /**
+   * Async: confirm identity via server HMAC validation of initData.
+   * Call after TelegramManager.init(). Safe to call when API is not configured (keeps unsafe mode).
+   */
+  async validateWithServer() {
+    try {
+      if (typeof TelegramManager === 'undefined' || !TelegramManager.validateSession) {
+        this.validationSource = 'local';
+        return { ok: true, source: 'local' };
+      }
+      const res = await TelegramManager.validateSession();
+      this.validationSource = res.source || 'error';
+      if (res.ok && res.user && res.source === 'server') {
+        this.user = {
+          id: res.user.id,
+          username: res.user.username || '',
+          first_name: res.user.first_name || '',
+          last_name: res.user.last_name || '',
+          language_code: res.user.language_code || '',
+          is_premium: !!res.user.is_premium,
+          photo_url: res.user.photo_url || ''
+        };
+        this._resolveRole();
+        this._applyUiRole();
+        console.info('[Auth] server-validated', this.role, this.user.id, this.user.username || '');
+      } else if (!res.ok && res.source === 'error' && res.error && res.error !== 'auth_api_not_configured') {
+        // Hard fail only when server is configured but rejected the signature
+        if (res.error === 'hash_mismatch' || res.error === 'auth_date_expired') {
+          this.user = null;
+          this.role = 'guest';
+          this.linkedPlayerId = null;
+          this._applyUiRole();
+          console.warn('[Auth] validation rejected — guest mode', res.error);
+        }
+      }
+      return res;
+    } catch (e) {
+      console.warn('[Auth] validateWithServer', e);
+      return { ok: false, source: 'error', error: String(e && e.message || e) };
+    }
   },
 
   _readTelegramUser() {
@@ -183,7 +226,7 @@ const AuthManager = {
       'view-analytics': false,
       'view-board': false,
       'view-diary': false,
-      'view-settings': true,
+      'view-settings': false,
       'edit-board': false,
       'edit-players': false,
       'edit-trainings': false,
@@ -201,9 +244,9 @@ const AuthManager = {
       'view-trainings': true,
       'view-players': true,
       'view-matches': true,
-      'view-diary': true,
-      'view-settings': true,
-      'view-analytics': true,
+      'view-diary': false,
+      'view-settings': false,
+      'view-analytics': false,
       'view-board': true,
       'edit-board': false,
       'edit-players': false,

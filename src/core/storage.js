@@ -46,6 +46,8 @@ const StorageManager = {
       diary: s.diary || [],
       myExercises: s.myExercises || [],
       animations: s.animations || [],
+      gifts: s.gifts || [],
+      moments: s.moments || [],
       activeBoard: {
         objects: (s.activeBoard && s.activeBoard.objects) || [],
         fieldView: (s.activeBoard && s.activeBoard.fieldView) || 'full'
@@ -278,6 +280,13 @@ const StorageManager = {
     if (!base.settings.rbac) {
       base.settings.rbac = { coaches: [], playerLinks: {} };
     }
+    if (Array.isArray(data.diary)) base.diary = data.diary;
+    if (Array.isArray(data.myExercises)) base.myExercises = data.myExercises;
+    if (Array.isArray(data.animations)) base.animations = data.animations;
+    if (Array.isArray(data.gifts)) base.gifts = data.gifts;
+    else base.gifts = base.gifts || [];
+    if (Array.isArray(data.moments)) base.moments = data.moments;
+    else base.moments = base.moments || [];
     base.schemaVersion = SCHEMA_VERSION;
     return base;
   },
@@ -368,11 +377,81 @@ const StorageManager = {
       diary: s.diary || [],
       myExercises: s.myExercises || [],
       animations: s.animations || [],
+      gifts: s.gifts || [],
+      moments: s.moments || [],
       activeBoard: {
         objects: (s.activeBoard && s.activeBoard.objects) || [],
         fieldView: (s.activeBoard && s.activeBoard.fieldView) || 'full'
       }
     };
+  },
+
+  /** Build a shareable team package for manual delivery by the coach. */
+  buildCorporatePayload() {
+    const s = Store.get();
+    const settings = { ...(s.settings || {}) };
+    const rbac = settings.rbac || {};
+    // Only retain username-based player links in a team file; do not expose phone,
+    // Telegram numeric IDs, private notes, diary entries or coach-only evaluations.
+    settings.rbac = {
+      coaches: Array.isArray(rbac.coaches) ? rbac.coaches.map(String) : ['Serdiuk_Artem'],
+      playerLinks: {}
+    };
+    const players = (s.players || []).map((p) => {
+      const copy = { ...p };
+      delete copy.phone;
+      delete copy.notes;
+      delete copy.telegramId;
+      delete copy.telegramPhotoUrl;
+      delete copy.condition;
+      delete copy.readiness;
+      delete copy.load;
+      delete copy.load28;
+      delete copy.healthStatus;
+      delete copy.status;
+      return copy;
+    });
+    return {
+      schemaVersion: SCHEMA_VERSION,
+      exportedAt: new Date().toISOString(),
+      settings,
+      players,
+      trainings: s.trainings || [],
+      exercises: s.exercises || [],
+      boards: s.boards || [],
+      calendar: s.calendar || [],
+      matches: s.matches || [],
+      myExercises: s.myExercises || [],
+      animations: s.animations || [],
+      activeBoard: {
+        objects: (s.activeBoard && s.activeBoard.objects) || [],
+        fieldView: (s.activeBoard && s.activeBoard.fieldView) || 'full'
+      }
+    };
+  },
+
+  async exportCorporateFile() {
+    if (typeof AuthManager !== 'undefined' && !AuthManager.isCoach()) {
+      Toast.show('Корпоративний файл може створити лише тренер', 'warn');
+      return;
+    }
+    this.beginIoLock(3000);
+    try {
+      const packageData = {
+        format: 'metalist-stuttgart-team',
+        formatVersion: 1,
+        createdAt: new Date().toISOString(),
+        issuer: 'METALIST STUTTGART',
+        payload: this.buildCorporatePayload()
+      };
+      const text = JSON.stringify(packageData, null, 2);
+      const date = typeof today === 'function' ? today() : new Date().toISOString().slice(0, 10);
+      const filename = 'metalist-stuttgart-team-' + date + '.metalist.json';
+      this._openExportChooser(text, filename, 'Корпоративний файл команди');
+    } catch (e) {
+      try { ErrorManager.log('corporate-export', e); } catch (_) {}
+      Toast.show('Не вдалося створити корпоративний файл: ' + (e.message || e), 'err');
+    }
   },
 
   async exportJSON() {
@@ -414,7 +493,7 @@ const StorageManager = {
     }
   },
 
-  _openExportChooser(text, filename) {
+  _openExportChooser(text, filename, dialogTitle = 'Експорт JSON') {
     const sizeKb = Math.round(new Blob([text]).size / 1024);
     const body = `
       <p style="font-size:13px;color:var(--muted);margin:0 0 12px;line-height:1.45">
@@ -432,7 +511,7 @@ const StorageManager = {
         background:rgba(0,0,0,0.35);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:10px;box-sizing:border-box"></textarea>
       <p class="note-sm" style="margin-top:10px">Після копіювання: відкрийте Saved Messages у Telegram → вставте → збережіть як файл, або вставте назад через «Імпорт JSON».</p>
     `;
-    Modal.open('Експорт JSON', body, [
+    Modal.open(dialogTitle, body, [
       { label: 'Закрити', cls: 'btn-s', action: 'cancel' }
     ]);
     const ta = () => document.getElementById('exportJsonTa');
@@ -663,8 +742,16 @@ const StorageManager = {
   importJSON(fileOrText) {
     const applyData = (raw) => {
       try {
-        const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
-        if (!data || typeof data !== 'object') throw new Error('Невірний формат JSON');
+        let data = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('Невірний формат JSON');
+        const isCorporate = data.format === 'metalist-stuttgart-team' && data.formatVersion === 1 && data.payload && typeof data.payload === 'object';
+        if (typeof AuthManager !== 'undefined' && !AuthManager.isCoach() && !isCorporate) {
+          throw new Error('Гравець і гість можуть імпортувати лише корпоративний файл від тренера');
+        }
+        if (data.format === 'metalist-stuttgart-team' && !isCorporate) {
+          throw new Error('Непідтримувана версія корпоративного файлу');
+        }
+        if (isCorporate) data = data.payload;
         // мінімальна валідація структури експорту
         if (!data.players && !data.activeBoard && !data.schemaVersion && !data.trainings && !data.boards && !data.schemes) {
           throw new Error('Некоректний формат JSON файлу');
@@ -723,6 +810,10 @@ const StorageManager = {
 
       const readText = async () => {
         try {
+          if (typeof fileOrText.size === 'number' && fileOrText.size > 15 * 1024 * 1024) {
+            Toast.show('Файл завеликий. Максимальний розмір — 15 МБ', 'err');
+            return false;
+          }
           if (typeof fileOrText.text === 'function') {
             const text = await fileOrText.text();
             if (!text) { Toast.show('Порожній файл', 'err'); return false; }
