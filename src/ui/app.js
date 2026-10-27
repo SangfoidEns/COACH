@@ -1,17 +1,40 @@
 /** Extracted module: src/ui/app.js lines 2014-2394 — DO NOT rewrite business logic */
 const App = {
   init() {
-    try { TelegramManager.init(); } catch (e) { console.warn('Telegram', e); }
+    try { (typeof CoachTools !== "undefined" && CoachTools.loadCustomArtifacts && CoachTools.loadCustomArtifacts());
+    TelegramManager.init(); } catch (e) { console.warn('Telegram', e); }
     try { StorageManager.init(); } catch (e) {
       console.error('Storage init failed', e);
       try { localStorage.removeItem(STORAGE_KEY); localStorage.removeItem(BACKUP_KEY); } catch (_) {}
       try { StorageManager.init(); } catch (e2) { console.error(e2); }
     }
     try { this.applyBranding(); } catch (e) { console.warn('branding', e); }
+    try { this.applyThemeMode((Store.get().settings || {}).theme || 'dark'); } catch (e) { console.warn('theme', e); }
     this.bindEvents();
+    try { this.bindEmblemGestures(); } catch (e) { console.warn("emblem", e); }
+    try {
+      if (this._cdTimer) clearInterval(this._cdTimer);
+      this._cdTimer = setInterval(() => { try { this.updateTrainingCountdown(); } catch (_) {} }, 30000);
+    } catch (_) {}
     try { /* плаваюча навігація вимкнена — статичний сайдбар справа */ } catch (e) { console.warn('nav', e); }
     try { if (typeof AuthManager !== 'undefined') AuthManager.init(); } catch (e) { console.warn('Auth', e); }
     try { if (typeof AuthManager !== 'undefined') { AuthManager._resolveRole(); AuthManager._applyUiRole(); } } catch (_) {}
+    // Server HMAC validation of Telegram initData (async — does not block first paint)
+    try {
+      if (typeof AuthManager !== 'undefined' && AuthManager.validateWithServer) {
+        AuthManager.validateWithServer().then((res) => {
+          try {
+            if (res && res.source === 'server' && res.ok) {
+              this.applyBranding && this.applyBranding();
+              this.renderCurrent && this.renderCurrent();
+            } else if (res && res.source === 'error' && (res.error === 'hash_mismatch' || res.error === 'auth_date_expired')) {
+              if (typeof Toast !== 'undefined') Toast.show('Сесію Telegram не підтверджено', 'warn');
+              this.renderCurrent && this.renderCurrent();
+            }
+          } catch (_) {}
+        }).catch(() => {});
+      }
+    } catch (_) {}
     try { BoardEngine.init(); } catch (e) { console.warn('board', e); }
     const view = (Store.get().ui && Store.get().ui.view) || 'dashboard';
     if (view === 'board') this.allowBoardOnce('logo');
@@ -206,36 +229,334 @@ const App = {
     try { StorageManager._ensureImportInput(); } catch (_) {}
   },
 
+  
+  applyThemeMode(theme) {
+    const t = theme === 'light' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', t);
+    document.body.setAttribute('data-theme', t);
+    try {
+      const s = Store.get().settings;
+      s.theme = t;
+      StorageManager.save();
+    } catch (_) {}
+    try {
+      if (typeof TelegramManager !== 'undefined' && TelegramManager.tg) {
+        // не форсимо TG theme — лише наш UI
+      }
+    } catch (_) {}
+  },
+
+  toggleTheme() {
+    const cur = document.documentElement.getAttribute('data-theme') || (Store.get().settings || {}).theme || 'dark';
+    this.applyThemeMode(cur === 'light' ? 'dark' : 'light');
+    try { Toast.show(cur === 'light' ? 'Темна тема' : 'Світла тема', 'ok'); } catch (_) {}
+  },
+
+  /** Пасхалка: тап по «Тренер» → FIFA-картка тренера (режим перегляду) */
+  
+  openStopwatch() {
+    document.querySelectorAll('.sw-sheet-backdrop').forEach(el => el.remove());
+    const backdrop = document.createElement('div');
+    backdrop.className = 'sw-sheet-backdrop tg-sheet-backdrop';
+    backdrop.innerHTML = `
+      <div class="tg-sheet sw-sheet" role="dialog" aria-label="Секундомір">
+        <div class="tg-sheet-handle"></div>
+        <div class="tg-sheet-title">Секундомір</div>
+        <div class="sw-display">
+          <div class="sw-time" id="swSession">00:00</div>
+          <div class="sw-label">Сесія</div>
+        </div>
+        <div class="sw-actions">
+          <button type="button" class="sw-btn" data-action="timer-start">▶ Старт</button>
+          <button type="button" class="sw-btn" data-action="timer-pause">⏸ Пауза</button>
+          <button type="button" class="sw-btn" data-action="timer-reset">↻ Скинути</button>
+          <button type="button" class="sw-btn" data-action="timer-add" data-sec="30">+30 с</button>
+        </div>
+        <div class="sw-display sw-display-sm">
+          <div class="sw-time" id="swEx">00:00</div>
+          <div class="sw-label">Вправа</div>
+        </div>
+        <div class="sw-actions">
+          <button type="button" class="sw-btn" data-action="extimer-start">▶</button>
+          <button type="button" class="sw-btn" data-action="extimer-pause">⏸</button>
+          <button type="button" class="sw-btn" data-action="extimer-reset">↻</button>
+        </div>
+        <button type="button" class="tg-sheet-btn tg-sheet-cancel" data-sw="close">Закрити</button>
+      </div>`;
+    document.body.appendChild(backdrop);
+    requestAnimationFrame(() => backdrop.classList.add('show'));
+
+    const sync = () => {
+      try {
+        const a = document.getElementById('timerMain');
+        const b = document.getElementById('timerEx');
+        const sa = document.getElementById('swSession');
+        const sb = document.getElementById('swEx');
+        if (a && sa) sa.textContent = a.textContent || '00:00';
+        if (b && sb) sb.textContent = b.textContent || '00:00';
+      } catch (_) {}
+    };
+    sync();
+    const iv = setInterval(sync, 250);
+    const close = () => {
+      clearInterval(iv);
+      backdrop.classList.remove('show');
+      setTimeout(() => backdrop.remove(), 220);
+    };
+    backdrop.addEventListener('click', (e) => {
+      if (e.target === backdrop || e.target.closest('[data-sw="close"]')) close();
+    });
+    try { TelegramManager.haptic && TelegramManager.haptic('light'); } catch (_) {}
+  },
+
+  openCoachCard() {
+    /* achievements + attendance via CoachTools */
+    const s = (typeof Store !== 'undefined' && Store.get()) || {};
+    const set = s.settings || {};
+    const name = set.coachName
+      || ((typeof AuthManager !== 'undefined' && AuthManager.displayName) ? AuthManager.displayName() : 'Artem Serdiuk');
+    let photo = set.coachPhoto || '';
+    try {
+      if (!photo && typeof AuthManager !== 'undefined' && AuthManager.user) {
+        photo = AuthManager.user.photo_url || AuthManager.user.photoUrl || '';
+      }
+      if (!photo && typeof TelegramManager !== 'undefined' && TelegramManager.tg) {
+        const u = TelegramManager.tg.initDataUnsafe && TelegramManager.tg.initDataUnsafe.user;
+        if (u && u.photo_url) photo = u.photo_url;
+      }
+    } catch (_) {}
+    const initials = (name || 'AS').split(/\s+/).map(p => p[0] || '').join('').slice(0, 2).toUpperCase() || 'AS';
+    const photoHtml = photo
+      ? '<img src="'+String(photo).replace(/"/g,'&quot;')+'" alt="" referrerpolicy="no-referrer" onerror="this.style.display=\'none\';this.nextElementSibling&&(this.nextElementSibling.style.display=\'grid\')"/><div class="cc-photo-ph" style="display:none">'+initials+'</div>'
+      : '<div class="cc-photo-ph">'+initials+'</div>';
+
+    // Real coach stats
+    const todayStr = (typeof today === 'function' ? today() : new Date().toISOString().slice(0, 10));
+    const trs = s.trainings || [];
+    const past = trs.filter(t => t.status === 'done' || ((t.date || '') < todayStr && t.status !== 'cancelled' && t.status !== 'canceled' && t.status !== 'draft'));
+    const planned = trs.filter(t => t.status === 'planned' || ((t.date || '') >= todayStr && t.status !== 'draft' && t.status !== 'cancelled'));
+    const totalMin = past.reduce((a, t) => a + (t.duration || 0), 0);
+    let attPresent = 0, attTotal = 0;
+    past.forEach(t => {
+      const att = t.attendance || {};
+      Object.keys(att).forEach(pid => {
+        attTotal++;
+        if (att[pid] && att[pid].present !== false) attPresent++;
+      });
+    });
+    const attPct = (typeof CoachTools !== 'undefined' && CoachTools.coachAttendanceRate) ? CoachTools.coachAttendanceRate() : 100;
+    const ach = (typeof CoachTools !== 'undefined' && CoachTools.getCoachAchievements)
+      ? CoachTools.getCoachAchievements() : null;
+    const cs = set.coachStats || { appMs: 0, boardMs: 0 };
+    if (ach) { cs.appMs = ach.appMs; cs.boardMs = ach.boardMs; }
+    const appTime = (typeof App !== 'undefined' && App.formatDurationMs) ? App.formatDurationMs(cs.appMs || 0) : '—';
+    const boardTime = (typeof App !== 'undefined' && App.formatDurationMs) ? App.formatDurationMs(cs.boardMs || 0) : '—';
+    const boardsN = (s.boards || []).length;
+    const playersN = (s.players || []).length;
+
+    document.querySelectorAll('.coach-card-overlay').forEach(el => el.remove());
+    const ov = document.createElement('div');
+    ov.className = 'coach-card-overlay';
+    ov.innerHTML = `
+      <div class="coach-card-fifa" role="dialog" aria-label="Картка тренера">
+        <div class="cc-glow"></div>
+        <div class="cc-frame">
+          <div class="cc-rating">${Math.min(99, 70 + Math.min(29, past.length))}</div>
+          <div class="cc-pos">HEAD COACH</div>
+          <div class="cc-photo">${photoHtml}</div>
+          <div class="cc-club">METALIST STUTTGART</div>
+          <div class="cc-name">${(typeof sanitize==='function'?sanitize(name):name).toUpperCase()}</div>
+          <div class="cc-stats">
+            <div class="cc-stat"><span>Тренувань</span><b>${past.length}</b></div>
+            <div class="cc-stat"><span>План</span><b>${planned.length}</b></div>
+            <div class="cc-stat"><span>Хв сесій</span><b>${totalMin}</b></div>
+            <div class="cc-stat"><span>Відвідув.</span><b>${attPct}%</b></div>
+            <div class="cc-stat"><span>У додатку</span><b>${appTime}</b></div>
+            <div class="cc-stat"><span>На дошці</span><b>${boardTime}</b></div>
+            <div class="cc-stat"><span>Схеми</span><b>${boardsN}</b></div>
+            <div class="cc-stat"><span>Склад</span><b>${playersN}</b></div>
+          </div>
+          <div class="cc-traits">
+            <span>★ Головний тренер</span>
+            <span>◆ Тактика</span>
+            <span>◆ Розвиток гравців</span>
+          </div>
+          <button type="button" class="cc-back" data-action="close-coach-card">Повернутися</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+    requestAnimationFrame(() => ov.classList.add('show'));
+    document.body.classList.add('coach-card-mode');
+    try { TelegramManager.haptic && TelegramManager.haptic('medium'); } catch (_) {}
+  },
+
+  closeCoachCard() {
+    document.querySelectorAll('.coach-card-overlay').forEach(el => {
+      el.classList.remove('show');
+      setTimeout(() => el.remove(), 280);
+    });
+    document.body.classList.remove('coach-card-mode');
+  },
+
+  
+  bindEmblemGestures() {
+    const el = document.getElementById('club-logo-btn');
+    if (!el || el._emblemBound) return;
+    el._emblemBound = true;
+    const HOLD_MS = 5000;
+    let timer = null;
+    let startX = 0, startY = 0, moved = false;
+    const progress = document.getElementById('emblemProgress');
+
+    const clear = () => {
+      if (timer) { clearTimeout(timer); timer = null; }
+      el.classList.remove('holding');
+      if (progress) { progress.hidden = true; progress.style.setProperty('--p', '0'); }
+    };
+
+    const onDown = (e) => {
+      if (e.button != null && e.button !== 0) return;
+      moved = false;
+      startX = e.clientX ?? (e.touches && e.touches[0]?.clientX) ?? 0;
+      startY = e.clientY ?? (e.touches && e.touches[0]?.clientY) ?? 0;
+      el.classList.add('holding');
+      if (progress) {
+        progress.hidden = false;
+        progress.style.setProperty('--p', '0');
+        // CSS animation driven by holding class
+      }
+      timer = setTimeout(() => {
+        timer = null;
+        el.classList.remove('holding');
+        if (progress) progress.hidden = true;
+        // Easter egg: 5s hold
+        try { this.openCoachCard(); } catch (err) { console.error(err); }
+        try { TelegramManager.haptic && TelegramManager.haptic('success'); } catch (_) {}
+      }, HOLD_MS);
+    };
+
+    const onMove = (e) => {
+      if (!timer) return;
+      const x = e.clientX ?? (e.touches && e.touches[0]?.clientX) ?? startX;
+      const y = e.clientY ?? (e.touches && e.touches[0]?.clientY) ?? startY;
+      if (Math.abs(x - startX) > 12 || Math.abs(y - startY) > 12) {
+        moved = true;
+        clear();
+      }
+    };
+
+    const onUp = (e) => {
+      const wasHolding = !!timer;
+      const didMove = moved;
+      clear();
+      // short tap → board (only if not long-press completed and not moved)
+      if (wasHolding && !didMove) {
+        e.preventDefault();
+        e.stopPropagation();
+        try {
+          this.allowBoardOnce && this.allowBoardOnce('logo');
+          this.openDefaultBoard ? this.openDefaultBoard() : this.navigate('board');
+        } catch (err) {
+          console.error(err);
+          try { this.navigate('board'); } catch (_) {}
+        }
+        try { TelegramManager.haptic && TelegramManager.haptic('light'); } catch (_) {}
+      }
+    };
+
+    el.addEventListener('pointerdown', onDown);
+    el.addEventListener('pointermove', onMove);
+    el.addEventListener('pointerup', onUp);
+    el.addEventListener('pointercancel', clear);
+    el.addEventListener('pointerleave', (e) => { if (timer) clear(); });
+  },
+
+
+  openSchemePicker() {
+    try {
+      let names = [];
+      try {
+        const src = (typeof SCHEMES !== 'undefined' && SCHEMES) ? SCHEMES
+          : (typeof window !== 'undefined' && window.SCHEMES) ? window.SCHEMES : null;
+        if (src) names = Object.keys(src);
+      } catch (_) {}
+      if (!names.length) names = ['4-3-3','4-4-2','4-2-3-1','3-5-2','3-4-3','5-3-2','4-1-4-1','3-4-2-1'];
+      // Prefer common + BACK3 list
+      const preferred = ['4-3-3','4-4-2','4-2-3-1','4-1-4-1','3-5-2','3-4-3','3-4-2-1','5-3-2','5-4-1','4-5-1','3-2-5-atk','3-2-build'];
+      const ordered = preferred.filter(n => names.includes(n)).concat(names.filter(n => !preferred.includes(n)));
+      const cur = (Store.get().activeBoard && Store.get().activeBoard.scheme) || '';
+      const html = '<div class="scheme-picker-grid">' + ordered.map(n =>
+        '<button type="button" class="scheme-pick-item' + (n === cur ? ' on' : '') + '" data-action="apply-scheme" data-scheme="' + n + '">' +
+        '<span class="scheme-pick-name">' + n + '</span></button>'
+      ).join('') + '</div>';
+      if (typeof Modal !== 'undefined' && Modal.open) {
+        Modal.open('Тактична схема / розстановка', html, [{ label: 'Закрити', cls: 'btn-s', action: 'cancel' }]);
+      }
+    } catch (err) {
+      console.error('[openSchemePicker]', err);
+      if (typeof Toast !== 'undefined') Toast.show('Не вдалося відкрити схеми', 'err');
+    }
+  },
+
+  openFieldViewPicker() {
+    try {
+      const opts = [
+        { id: 'full', label: 'Повне поле' },
+        { id: 'half', label: 'Половина' },
+        { id: 'attack', label: 'Атакувальна третина' },
+        { id: 'defense', label: 'Оборонна третина' }
+      ];
+      const cur = (Store.get().activeBoard && Store.get().activeBoard.fieldView) || 'full';
+      const html = '<div class="scheme-picker-grid">' + opts.map(o =>
+        '<button type="button" class="scheme-pick-item' + (o.id === cur ? ' on' : '') + '" data-action="apply-field-view" data-field-view="' + o.id + '">' +
+        '<span class="scheme-pick-name">' + o.label + '</span></button>'
+      ).join('') + '</div>';
+      if (typeof Modal !== 'undefined' && Modal.open) {
+        Modal.open('Вид поля', html, [{ label: 'Закрити', cls: 'btn-s', action: 'cancel' }]);
+      }
+    } catch (err) {
+      console.error('[openFieldViewPicker]', err);
+      if (typeof Toast !== 'undefined') Toast.show('Не вдалося відкрити вид поля', 'err');
+    }
+  },
+
   openDefaultBoard() {
     try {
       if (typeof StorageManager !== 'undefined' && StorageManager.isIoLocked && StorageManager.isIoLocked()) {
         console.warn('[openDefaultBoard] blocked during IO');
+        try { Toast.show('Зачекайте завершення імпорту/експорту', 'warn'); } catch (_) {}
         return;
       }
       const s = Store.get();
-      if (!s || !s.activeBoard) {
-        this.allowBoardOnce('logo'); this.navigate('board');
+      if (!s) {
+        this.allowBoardOnce('logo');
+        this.navigate('board');
         return;
       }
-      const defName = (s.settings && s.settings.defaultScheme) || '4-3-3';
-      const pinned = (s.boards || []).find(b => b && b.isDefault) || (s.boards || []).find(b => b && b.objects && b.objects.length) || null;
-      if (pinned && Array.isArray(pinned.objects) && pinned.objects.length) {
-        s.activeBoard.objects = JSON.parse(JSON.stringify(pinned.objects));
-        if (pinned.fieldView) s.activeBoard.fieldView = pinned.fieldView;
-        s.activeBoard.selectedId = null;
-        try { StorageManager.saveDebounced(); } catch (_) {}
-      } else if (typeof BoardEngine !== 'undefined' && typeof BoardEngine.applyScheme === 'function') {
-        try { BoardEngine.applyScheme(defName); } catch (e) { console.warn('[scheme]', e); }
+      // Завжди відкриваємо ПОТОЧНУ дошку (або порожню). Схему НЕ нав'язуємо.
+      if (!s.activeBoard) {
+        s.activeBoard = { objects: [], selectedId: null, tool: 'select', fieldView: 'full' };
       }
-      this.allowBoardOnce('logo'); this.navigate('board');
+      if (!Array.isArray(s.activeBoard.objects)) s.activeBoard.objects = [];
+      s.activeBoard.selectedId = null;
+      // скинути «мертві» UI-стани, що блокують кліки
+      try {
+        document.body.classList.remove('coach-card-mode', 'drawer-open');
+        document.querySelectorAll('.coach-card-overlay, .tg-sheet-backdrop, #tgActionSheet').forEach(el => el.remove());
+      } catch (_) {}
+      this.allowBoardOnce('logo');
+      this.navigate('board');
       setTimeout(() => {
         try {
-          if (BoardEngine.render) BoardEngine.render();
-          if (BoardEngine.fitField) BoardEngine.fitField();
-          if (BoardEngine.renderToolbar) BoardEngine.renderToolbar();
+          if (typeof BoardEngine !== 'undefined') {
+            if (BoardEngine.render) BoardEngine.render();
+            if (BoardEngine.fitField) BoardEngine.fitField();
+            if (BoardEngine.renderToolbar) BoardEngine.renderToolbar();
+          }
         } catch (_) {}
-      }, 60);
-      try { Toast.show('Дошка · ' + defName, 'ok'); } catch (_) {}
+      }, 80);
+      const n = (s.activeBoard.objects || []).length;
+      try { Toast.show(n ? ('Дошка · ' + n + ' об\'єктів') : 'Порожня дошка', 'ok'); } catch (_) {}
     } catch (e) {
       console.error('[openDefaultBoard]', e);
       try { this.allowBoardOnce('logo'); this.navigate('board'); } catch (_) {}
@@ -256,7 +577,14 @@ const App = {
       if (badge) {
         if (typeof AuthManager !== 'undefined') {
           const role = AuthManager.roleLabel();
-          const name = AuthManager.displayName();
+          let name = AuthManager.displayName() || '';
+          name = String(name)
+            .replace(/[\u200B-\u200D\uFEFF\u2060\u00AD]/g,'')
+            .replace(/[\uFE00-\uFE0F]/g,'')
+            .replace(/[\u2600-\u27BF]/g,'')
+            .replace(/[\uD83C-\uDBFF][\uDC00-\uDFFF]/g,'')
+            .replace(/[\u2600-\u26FF]/g,'')
+            .replace(/\s+/g,' ').trim();
           badge.innerHTML = '<span class="auth-role">' + sanitize(role) + '</span>: ' + sanitize(name);
           badge.title = AuthManager.user ? ('Telegram ID: ' + AuthManager.user.id) : 'Локальний режим';
         } else {
@@ -270,7 +598,7 @@ const App = {
     document.documentElement.style.setProperty('--club-accent', s.accent);
     const logo = document.getElementById('clubLogo');
     if (logo) {
-      if (s.logoData) {
+      if (s.logoData && String(s.logoData).startsWith('data:image/')) {
         logo.innerHTML = '<img src="' + s.logoData + '" alt="logo">';
       } else {
         logo.textContent = s.clubShort || 'МШ';
@@ -405,6 +733,11 @@ const App = {
   },
 
   initBoardToolbarDrag() {
+    /* ORDER_LOCK_NO_DRAG: top/bottom toolbars are static in flex layout */
+    if (document.getElementById('boardToolbarTop') || document.getElementById('boardToolbarBottom')) {
+      return;
+    }
+
     // Docked top/bottom bars — без плаваючого drag
     if (document.getElementById('boardToolbarTop') || document.getElementById('boardToolbarBottom')) return;
     const tb = document.getElementById('boardToolbar');
@@ -476,13 +809,70 @@ const App = {
 
   _bindPlayerCompare() {
     const sel = document.getElementById('playerCompareSel');
-    if (!sel || sel._bound) return;
-    sel._bound = true;
-    sel.addEventListener('change', () => {
-      try { window.__playerCompareId = sel.value || ''; } catch (_) {}
-      try { this.renderCurrent(); } catch (_) {}
-    });
+    if (!sel) return;
+    // Завжди переприв'язуємо (clone) — надійно в модалці Telegram WebView
+    if (sel._msCmpBound && sel._msCmpHandler) {
+      try { sel.removeEventListener('change', sel._msCmpHandler); } catch (_) {}
+    }
+    const onChange = () => {
+      const oid = (document.getElementById('playerCompareSel') || sel).value || '';
+      try {
+        window.__playerCompareId = oid;
+        window.__coachCompareId = oid;
+        window.__fifaCompareId = oid;
+      } catch (_) {}
+      let pid = window.__coachCardPlayerId || null;
+      if (!pid) {
+        const host = document.querySelector('[data-compare-host], [data-fifa-player], [data-compare-root], [data-compare-me]');
+        pid = host && (
+          host.getAttribute('data-compare-host') ||
+          host.getAttribute('data-fifa-player') ||
+          host.getAttribute('data-compare-root') ||
+          host.getAttribute('data-compare-me')
+        );
+      }
+      if (!pid) {
+        const s2 = document.getElementById('playerCompareSel');
+        pid = s2 && s2.getAttribute('data-compare-me');
+      }
+      if (!pid || typeof Views === 'undefined') return;
+      const me = (Store.get().players || []).find(x => x.id === pid);
+      if (!me) return;
+      // Оновлення ТІЛЬКИ блоку результатів — без перезавантаження модалки
+      const hostEl = document.getElementById('compareResultHost');
+      if (hostEl && Views._compareResultHtml) {
+        hostEl.innerHTML = Views._compareResultHtml(me, oid);
+        try { if (typeof TelegramManager !== 'undefined' && TelegramManager.haptic) TelegramManager.haptic('light'); } catch (_) {}
+        return;
+      }
+      // Fallback: повний ререндер картки
+      try {
+        const asCoach = typeof AuthManager !== 'undefined' && AuthManager.isCoach && AuthManager.isCoach();
+        let html = '', title = '';
+        if (asCoach && Views.coachPlayerDetail) {
+          title = 'Картка гравця · ' + (me.lastName || me.firstName || '');
+          html = '<div class="fifa-modal-wrap" data-compare-host="' + pid + '">' + Views.coachPlayerDetail(pid) + '</div>';
+        } else if (Views._fifaCard) {
+          const st = Views._playerStats ? Views._playerStats(pid) : {};
+          title = 'FIFA-картка · ' + (me.lastName || me.firstName || '');
+          html = '<div class="fifa-modal-wrap" data-compare-host="' + pid + '">' + Views._fifaCard(me, st) + '</div>';
+        }
+        if (html && typeof Modal !== 'undefined' && Modal.open) {
+          Modal.open(title, html, [{ label: 'Закрити', cls: 'btn-s', action: 'cancel' }]);
+          setTimeout(() => {
+            try {
+              const s2 = document.getElementById('playerCompareSel');
+              if (s2) { s2.value = oid; App._bindPlayerCompare(); }
+            } catch (_) {}
+          }, 50);
+        }
+      } catch (err) { console.warn('[compare fallback]', err); }
+    };
+    sel._msCmpHandler = onChange;
+    sel._msCmpBound = true;
+    sel.addEventListener('change', onChange);
   },
+
   handleTelegramBack() {
     try {
       // спочатку закрити sheet / modal
@@ -517,6 +907,10 @@ const App = {
   },
 
   navigate(view) {
+    // Aliases for dashboard pills / legacy links
+    if (view === 'schemes' || view === 'scheme') view = 'tactics';
+    if (view === 'stats' || view === 'statistics') view = 'analytics';
+    if (view === 'squad' || view === 'roster') view = 'players';
     // iOS: після file picker focus може «клікнути» логотип — блокуємо
     try {
       if (typeof StorageManager !== 'undefined' && StorageManager.isIoLocked && StorageManager.isIoLocked()) {
@@ -578,13 +972,34 @@ const App = {
       }
       try { TelegramManager.showBackButton(); } catch (_) {}
       try { TelegramManager.haptic('light'); } catch (_) {}
+      // iOS Telegram: viewport settles after expand — refit stage 2×
+      const refit = () => {
+        try {
+          if (typeof BoardEngine !== 'undefined') {
+            BoardEngine._sizeStageToPitch && BoardEngine._sizeStageToPitch();
+            BoardEngine.applyCamera && BoardEngine.applyCamera();
+            BoardEngine.renderTokens && BoardEngine.renderTokens();
+            BoardEngine.renderDrawings && BoardEngine.renderDrawings();
+            BoardEngine.renderToolbar && BoardEngine.renderToolbar();
+          }
+        } catch (_) {}
+      };
+      requestAnimationFrame(() => { refit(); setTimeout(refit, 120); setTimeout(refit, 400); });
     } else {
-      // Вихід з дошки — завжди знімаємо FS/board-only, інакше UI «мертвий»
+      // Вихід з дошки — завжди знімаємо FS/board-only і лоток інструментів
       try { if (typeof BoardEngine !== 'undefined' && BoardEngine.leaveBoardMode) BoardEngine.leaveBoardMode(); } catch (_) {}
+      try { if (typeof BoardEngine !== 'undefined' && BoardEngine.closeToolsTray) BoardEngine.closeToolsTray(true); } catch (_) {}
       document.body.classList.remove(
         'board-workspace', 'mode-board-focus', 'board-only-mode', 'board-fs-nav',
-        'bw-nav', 'bw-props', 'bw-tools-collapsed', 'bw-nav-hide', 'present-mode'
+        'bw-nav', 'bw-props', 'bw-tools-collapsed', 'bw-nav-hide', 'present-mode',
+        'tools-tray-open', 'bench-collapsed'
       );
+      // прибрати orphan tray з body
+      try {
+        const tray = document.getElementById('btbToolsTray');
+        if (tray && tray.parentElement === document.body) tray.remove();
+        document.querySelectorAll('body > .btb-tray').forEach(el => el.remove());
+      } catch (_) {}
       const boardEl = document.getElementById('v-board');
       if (boardEl) {
         boardEl.classList.remove('on');
@@ -638,7 +1053,121 @@ const App = {
     this._afterPanelToggle();
   },
 
+  formatNextTr(t) {
+    if (!t) return '—';
+    let name = String(t.name || 'Тр.').replace(/^Тренування\s*/i, 'Тр. ');
+    if (name.length > 16) name = name.slice(0, 14) + '…';
+    return name;
+  },
+  updateTrainingCountdown() {
+    try {
+      const el = document.getElementById('nextTr');
+      const sub = document.getElementById('nextTrCountdown');
+      const s = Store.get();
+      const next = (s.trainings || []).filter(x => x.status === 'planned' && x.date >= (typeof today === 'function' ? today() : '')).sort((a, b) => (a.date || '').localeCompare(b.date || '') || String(a.time||'').localeCompare(String(b.time||'')))[0];
+      if (!next) {
+        if (el) el.textContent = '—';
+        if (sub) sub.textContent = '';
+        return;
+      }
+      const name = this.formatNextTr ? this.formatNextTr(next) : (next.name || 'Тр.');
+      if (el) { el.textContent = name; el.title = (next.name || '') + ' · ' + (next.date || '') + ' ' + (next.time || ''); }
+      // countdown
+      try {
+        const [hh, mm] = String(next.time || '18:00').split(':').map(Number);
+        const dt = new Date(next.date + 'T00:00:00');
+        if (!isNaN(hh)) dt.setHours(hh || 0, mm || 0, 0, 0);
+        const ms = dt.getTime() - Date.now();
+        let cd = '';
+        if (ms > 0) {
+          const h = Math.floor(ms / 3600000);
+          const m = Math.floor((ms % 3600000) / 60000);
+          cd = h > 48 ? (Math.floor(h/24) + 'д') : (h + 'г ' + m + 'хв');
+        } else if (ms > -7200000) cd = 'зараз';
+        else cd = '';
+        if (sub) sub.textContent = cd ? ('через ' + cd) : (next.date || '');
+      } catch (_) { if (sub) sub.textContent = next.date || ''; }
+    } catch (_) {}
+  },
+  updateNextTrLabel() {
+    try {
+      const el = document.getElementById('nextTr');
+      if (!el) return;
+      const s = Store.get();
+      const next = (s.trainings || []).filter(x => x.status === 'planned' && x.date >= (typeof today === 'function' ? today() : '')).sort((a, b) => (a.date || '').localeCompare(b.date || ''))[0];
+      el.textContent = next ? this.formatNextTr(next) : '—';
+      el.title = next ? ((next.name || '') + ' · ' + (next.date || '')) : '';
+    } catch (_) {}
+  },
+  checkBirthdays() {
+    try {
+      const todayStr = (typeof today === 'function') ? today() : new Date().toISOString().slice(0,10);
+      const md = todayStr.slice(5); // MM-DD
+      const list = (Store.get().players || []).filter(p => p.birthDate && String(p.birthDate).slice(5,10) === md);
+      if (!list.length) return;
+      const names = list.map(p => ((p.firstName||'') + ' ' + (p.lastName||'')).trim() || ('#'+p.number)).join(', ');
+      const html = `<div class="bday-greet">
+        <div class="bday-balloon">🎂</div>
+        <h2>З Днем народження!</h2>
+        <p>${sanitize(names)}</p>
+        <p class="note-sm">МЕТАЛІСТ ШТУТГАРТ вітає</p>
+      </div>`;
+      if (typeof Modal !== 'undefined' && Modal.open) {
+        Modal.open('Свято', html, [{ label: '🎉 Дякуємо', cls: 'btn-p', action: 'cancel' }]);
+      }
+      try { TelegramManager.haptic && TelegramManager.haptic('success'); } catch (_) {}
+    } catch (_) {}
+  },
+  /* ── Облік часу в додатку / на дошці (для картки тренера) ── */
+  _usageTimer: null,
+  startUsageTracker() {
+    if (this._usageTimer) return;
+    const tick = () => {
+      try {
+        const s = Store.get();
+        if (!s) return;
+        s.settings = s.settings || {};
+        const st = s.settings.coachStats || { appMs: 0, boardMs: 0 };
+        st.appMs = (st.appMs || 0) + 15000;
+        const view = (s.ui && s.ui.view) || '';
+        if (view === 'board') st.boardMs = (st.boardMs || 0) + 15000;
+        st.updatedAt = new Date().toISOString();
+        s.settings.coachStats = st;
+        // тихе збереження раз на ~2 хв
+        if (!this._usageSaveAt || Date.now() - this._usageSaveAt > 120000) {
+          this._usageSaveAt = Date.now();
+          try { StorageManager.save(); } catch (_) {}
+        }
+      } catch (_) {}
+    };
+    this._usageTimer = setInterval(tick, 15000);
+    // first soft tick after 15s
+  },
+  formatDurationMs(ms) {
+    ms = Math.max(0, Number(ms) || 0);
+    const totalMin = Math.floor(ms / 60000);
+    const h = Math.floor(totalMin / 60);
+    const m = totalMin % 60;
+    if (h <= 0) return m + ' хв';
+    return h + ' год ' + m + ' хв';
+  },
+  syncRoleClass() {
+    try {
+      document.body.classList.remove('role-coach', 'role-player', 'role-guest');
+      if (typeof AuthManager !== 'undefined') {
+        if (AuthManager.isCoach && AuthManager.isCoach()) document.body.classList.add('role-coach');
+        else if (AuthManager.isPlayer && AuthManager.isPlayer()) document.body.classList.add('role-player');
+        else document.body.classList.add('role-guest');
+      }
+    } catch (_) {}
+  },
   renderCurrent() {
+    try { this.startUsageTracker(); } catch (_) {}
+    try { this.syncRoleClass(); } catch (_) {}
+    try { if (!this._bdayChecked) { this._bdayChecked = true; this.checkBirthdays(); } } catch (_) {}
+    try { this.updateTrainingCountdown(); } catch (_) {}
+    try { this.updateNextTrLabel(); } catch (_) {}
+
     try {
       const v = (Store.get().ui && Store.get().ui.view) || 'dashboard';
       document.body.classList.toggle('board-on', v === 'board');
@@ -654,6 +1183,12 @@ const App = {
       } catch (e) { console.error('[board render]', e); }
       return;
     }
+    // Не на дошці — гарантовано ховаємо лоток інструментів (баг: панель «липла» до меню)
+    try {
+      if (typeof BoardEngine !== 'undefined' && BoardEngine.closeToolsTray) BoardEngine.closeToolsTray(true);
+      document.body.classList.remove('tools-tray-open');
+      document.querySelectorAll('body > #btbToolsTray, body > .btb-tray').forEach(el => el.remove());
+    } catch (_) {}
     const el = document.getElementById('v-' + view);
     if (!el) {
       console.warn('[renderCurrent] missing #v-' + view);
@@ -695,21 +1230,35 @@ const App = {
   updateClock() {
     const now = new Date();
     const el = document.getElementById('clock');
-    if (el) el.innerHTML = `<strong>${fmtDate(now)}</strong> · ${now.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+    // Компактно: дата + HH:MM (без секунд — не обрізається в пігулці)
+    if (el) {
+      const d = now.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit' });
+      const t = now.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
+      el.innerHTML = '<strong>' + d + '</strong> · ' + t;
+    }
     const s = Store.get();
-    const next = s.trainings.filter(t => t.status === 'planned' && t.date >= today()).sort((a, b) => a.date.localeCompare(b.date))[0];
+    const next = (s.trainings || []).filter(t => t.status === 'planned' && t.date >= today()).sort((a, b) => a.date.localeCompare(b.date))[0];
     const nt = document.getElementById('nextTr');
-    if (nt) {
-      if (next) {
-        const dt = new Date(next.date + 'T' + (next.time || '10:00'));
-        const diff = dt - now;
-        let cd = '—';
-        if (diff > 0) {
-          const h = Math.floor(diff / 3600000), m = Math.floor((diff % 3600000) / 60000);
-          cd = h + 'г ' + m + 'хв';
-        }
-        nt.innerHTML = `Наступне: <strong>${sanitize(next.name)}</strong> (${cd})`;
-      } else nt.innerHTML = 'Наступне: <strong>—</strong>';
+    const cdEl = document.getElementById('nextTrCountdown');
+    if (next) {
+      const short = this.formatNextTr ? this.formatNextTr(next) : (next.name || 'Тр.');
+      if (nt) {
+        nt.textContent = short;
+        nt.title = (next.name || '') + ' · ' + (next.date || '') + (next.time ? ' ' + next.time : '');
+      }
+      if (cdEl) {
+        try {
+          const dt = new Date(next.date + 'T' + (next.time || '10:00'));
+          const diff = dt - now;
+          if (diff > 0) {
+            const h = Math.floor(diff / 3600000), m = Math.floor((diff % 3600000) / 60000);
+            cdEl.textContent = 'через ' + h + 'г ' + m + 'хв';
+          } else cdEl.textContent = next.date || '';
+        } catch (_) { cdEl.textContent = next.date || ''; }
+      }
+    } else {
+      if (nt) { nt.textContent = '—'; nt.title = ''; }
+      if (cdEl) cdEl.textContent = '';
     }
   },
 
@@ -723,6 +1272,7 @@ const App = {
     const t = (Store.get().trainings || []).find(x => x.id === trainingId);
     if (!t) return;
     const cancelled = t.status === 'cancelled' || t.status === 'canceled';
+    const isCoach = typeof AuthManager !== 'undefined' && AuthManager.isCoach && AuthManager.isCoach();
     // прибрати старий sheet
     document.getElementById('tgActionSheet')?.remove();
     document.getElementById('tgActionBackdrop')?.remove();
@@ -733,10 +1283,41 @@ const App = {
     const sheet = document.createElement('div');
     sheet.id = 'tgActionSheet';
     sheet.className = 'tg-sheet';
-    sheet.innerHTML = `
-      <div class="tg-sheet-handle"></div>
-      <div class="tg-sheet-title">${typeof sanitize === 'function' ? sanitize(t.name) : t.name}</div>
-      <div class="tg-sheet-sub">${t.date || ''} · ${Views._trStatusLabel ? Views._trStatusLabel(t.status) : t.status}</div>
+    // План + статистика (для всіх)
+    const struct = (t.structure || []).map(b =>
+      '<div class="tr-plan-row"><span>' + (typeof sanitize === 'function' ? sanitize(b.title || b.name || 'Блок') : (b.title || b.name || 'Блок')) + '</span><b>' + (b.duration || 0) + ' хв</b></div>'
+    ).join('');
+    const totalMin = (t.structure || []).reduce((a, b) => a + (b.duration || 0), 0) || t.duration || 0;
+    const load = (typeof LoadModel !== 'undefined' && LoadModel.sessionLoad) ? LoadModel.sessionLoad(t.duration || totalMin, t.intensity) : ((t.duration || totalMin) * (t.intensity || 0));
+    // attendance stats for this session
+    let attPresent = 0, attTotal = 0, avgRpe = 0, rpeN = 0;
+    try {
+      const att = t.attendance || {};
+      Object.keys(att).forEach(pid => {
+        attTotal++;
+        if (att[pid] && att[pid].present !== false) attPresent++;
+        if (att[pid] && att[pid].rpe != null) { avgRpe += +att[pid].rpe; rpeN++; }
+      });
+      if (rpeN) avgRpe = Math.round((avgRpe / rpeN) * 10) / 10;
+    } catch (_) {}
+    const attPct = attTotal ? Math.round(attPresent / attTotal * 100) : null;
+    const statsBlock = `
+      <div class="tr-stats-grid">
+        <div class="tr-stat"><b>${totalMin}</b><span>хв плану</span></div>
+        <div class="tr-stat"><b>${t.intensity != null ? t.intensity : '—'}</b><span>RPE план</span></div>
+        <div class="tr-stat"><b>${load || '—'}</b><span>Load</span></div>
+        <div class="tr-stat"><b>${attPct != null ? attPct + '%' : '—'}</b><span>Відвідування</span></div>
+        <div class="tr-stat"><b>${rpeN ? avgRpe : '—'}</b><span>Сер. RPE</span></div>
+        <div class="tr-stat"><b>${attPresent}/${attTotal || '—'}</b><span>Було</span></div>
+      </div>`;
+    const planBlock = `
+      <div class="tg-sheet-preview tr-plan-preview">
+        ${t.mainGoal ? ('<div class="tr-goal">🎯 ' + (typeof sanitize === 'function' ? sanitize(t.mainGoal) : t.mainGoal) + '</div>') : ''}
+        <div class="tr-plan-title">План тренування</div>
+        ${struct || '<div class="note-sm">Структура не задана</div>'}
+        ${statsBlock}
+      </div>`;
+    const coachActions = isCoach ? `
       <button type="button" class="tg-sheet-btn" data-sheet-act="edit" data-tid="${t.id}">✏️ Редагувати</button>
       <button type="button" class="tg-sheet-btn" data-sheet-act="attendance" data-tid="${t.id}">✓ Відвідування</button>
       <button type="button" class="tg-sheet-btn" data-sheet-act="dup" data-tid="${t.id}">⧉ Дубль / копія</button>
@@ -746,21 +1327,18 @@ const App = {
         ? `<button type="button" class="tg-sheet-btn" data-sheet-act="restore" data-tid="${t.id}">↩ Відновити (заплановане)</button>`
         : `<button type="button" class="tg-sheet-btn tg-sheet-warn" data-sheet-act="cancel" data-tid="${t.id}">🚫 Скасувати тренування</button>`}
       <button type="button" class="tg-sheet-btn tg-sheet-danger" data-sheet-act="delete" data-tid="${t.id}">🗑 Видалити</button>
+    ` : `
+      <button type="button" class="tg-sheet-btn" data-sheet-act="open-board" data-tid="${t.id}">⚽ Переглянути дошку</button>
+    `;
+    sheet.innerHTML = `
+      <div class="tg-sheet-handle"></div>
+      <div class="tg-sheet-title">${typeof sanitize === 'function' ? sanitize(t.name) : t.name}</div>
+      <div class="tg-sheet-sub">${t.date || ''} · ${Views._trStatusLabel ? Views._trStatusLabel(t.status) : t.status}</div>
+      ${planBlock}
+      ${coachActions}
       <button type="button" class="tg-sheet-btn tg-sheet-cancel" data-sheet-act="close">Закрити</button>
     `;
     sheet.className = 'tg-sheet';
-    // структура тренування в прев'ю
-    const struct = (t.structure || []).map(b =>
-      '• ' + (b.title || b.name || 'Блок') + ' — ' + (b.duration || 0) + ' хв'
-    ).join('<br>');
-    if (struct) {
-      const prev = document.createElement('div');
-      prev.className = 'tg-sheet-preview';
-      prev.innerHTML = (t.mainGoal ? ('🎯 ' + (typeof sanitize === 'function' ? sanitize(t.mainGoal) : t.mainGoal) + '<br><br>') : '') + struct;
-      const sub = sheet.querySelector('.tg-sheet-sub');
-      if (sub && sub.nextSibling) sheet.insertBefore(prev, sub.nextSibling);
-      else sheet.appendChild(prev);
-    }
     backdrop.appendChild(sheet);
     document.body.appendChild(backdrop);
     requestAnimationFrame(() => {
@@ -1181,7 +1759,18 @@ const App = {
         App.navigate(view);
         return;
       }
-      if (t.dataset.tool) { Store.get().activeBoard.tool = t.dataset.tool; BoardEngine.renderToolbar(); return; }
+      if (t.dataset.tool) {
+        const ab = Store.get().activeBoard;
+        ab.tool = t.dataset.tool;
+        // Лоток НЕ закриваємо автоматично — тренер сам згортає ⊕
+        // (раніше на <900px лоток миттєво закривався → здавалося, що «не розгортається»)
+        BoardEngine.renderToolbar();
+        try {
+          document.body.classList.toggle('tools-tray-open', !!ab.toolsTrayOpen);
+        } catch (_) {}
+        try { TelegramManager.haptic && TelegramManager.haptic('selection'); } catch (_) {}
+        return;
+      }
       if (t.dataset.ai) {
         const map = { training: () => AIService.generateTraining(), warmup: () => AIService.generateExercise('warmup'),
           tech: () => AIService.generateExercise('tech'), tactical: () => AIService.generateExercise('tactical'),
@@ -1223,11 +1812,64 @@ const App = {
         e.stopPropagation();
         return;
       }
-      if (action === 'open-default-board') {
+      if (action === 'open-default-board' && !e.target.closest('.auth-role-btn, [data-action="coach-easter"]')) {
         e.preventDefault();
         e.stopPropagation();
         App.openDefaultBoard();
         return;
+      }
+      
+      if (action === 'apply-scheme') {
+        e.preventDefault(); e.stopPropagation();
+        const name = t.dataset.scheme || t.getAttribute('data-scheme');
+        if (!name) return;
+        try {
+          if (typeof BoardEngine !== 'undefined' && BoardEngine.applyScheme) {
+            BoardEngine.applyScheme(name);
+          }
+          if (Store.get().activeBoard) Store.get().activeBoard.scheme = name;
+          const lab = document.getElementById('schemePickVal');
+          if (lab) lab.textContent = name;
+          try { StorageManager.save(); } catch (_) {}
+          if (typeof Modal !== 'undefined') Modal.close();
+          if (typeof Toast !== 'undefined') Toast.show('Схема ' + name, 'ok');
+        } catch (err) {
+          console.error('[apply-scheme]', err);
+          if (typeof Toast !== 'undefined') Toast.show('Помилка схеми', 'err');
+        }
+        return;
+      }
+      if (action === 'apply-field-view') {
+        e.preventDefault(); e.stopPropagation();
+        const fv = t.dataset.fieldView || t.getAttribute('data-field-view');
+        if (!fv) return;
+        try {
+          if (Store.get().activeBoard) Store.get().activeBoard.fieldView = fv;
+          if (typeof BoardEngine !== 'undefined') {
+            if (BoardEngine.drawField) BoardEngine.drawField(fv);
+            if (BoardEngine.renderTokens) BoardEngine.renderTokens();
+            if (BoardEngine.renderDrawings) BoardEngine.renderDrawings();
+            if (BoardEngine.fitField) BoardEngine.fitField();
+          }
+          const labels = { full: 'Повне', half: 'Половина', attack: 'Атака', defense: 'Захист' };
+          const lab = document.getElementById('fieldViewVal');
+          if (lab) lab.textContent = labels[fv] || fv;
+          try { StorageManager.save(); } catch (_) {}
+          if (typeof Modal !== 'undefined') Modal.close();
+          if (typeof Toast !== 'undefined') Toast.show('Поле: ' + (labels[fv] || fv), 'ok');
+        } catch (err) {
+          console.error('[apply-field-view]', err);
+        }
+        return;
+      }
+
+      if (action === 'pick-scheme') {
+        e.preventDefault(); e.stopPropagation();
+        return App.openSchemePicker();
+      }
+      if (action === 'pick-field-view') {
+        e.preventDefault(); e.stopPropagation();
+        return App.openFieldViewPicker();
       }
       if (action === 'reset-all') {
         if (typeof AuthManager !== 'undefined' && !AuthManager.can('reset-data')) {
@@ -1235,6 +1877,47 @@ const App = {
         }
         return Modal.confirm('Скинути всі дані до демо?', () => { StorageManager.clear(); App.applyBranding(); App.navigate('dashboard'); Toast.show('Скинуто', 'ok'); });
       }
+      
+      if (action === 'add-artifact-json') {
+        e.preventDefault(); e.stopPropagation();
+        if (typeof AuthManager !== 'undefined' && AuthManager.isCoach && !AuthManager.isCoach()) {
+          Toast.show('Лише тренер', 'warn'); return;
+        }
+        const ta = document.getElementById('artifactJsonInput');
+        const raw = ta ? ta.value : '';
+        if (!raw || !raw.trim()) {
+          Toast.show('Вставте JSON артефакту', 'warn'); return;
+        }
+        try {
+          const art = CoachTools.addArtifactToCatalog(raw);
+          Toast.show((art.ico || '★') + ' «' + art.label + '» додано в каталог', 'ok');
+          if (ta) ta.value = '';
+          try { App.renderCurrent(); } catch (_) {}
+        } catch (err) {
+          console.error('[add-artifact]', err);
+          Toast.show('Помилка JSON: ' + (err && err.message ? err.message : 'перевірте формат'), 'err');
+        }
+        return;
+      }
+      if (action === 'preview-artifacts') {
+        e.preventDefault(); e.stopPropagation();
+        try { CoachTools.mergeCustomCatalog && CoachTools.mergeCustomCatalog(); } catch (_) {}
+        const list = (typeof CoachTools !== 'undefined' && CoachTools.GIFT_CATALOG) ? CoachTools.GIFT_CATALOG : [];
+        const rarL = (CoachTools.RARITY_LABEL) || {};
+        const html = '<div class="artifact-catalog-list">' + list.map(g => {
+          const rl = rarL[g.rarity] || g.rarity || '';
+          return '<div class="artifact-cat-row rarity-' + (g.rarity || 'common') + '" style="--art-hue:' + (g.hue || 42) + '">' +
+            '<span class="ico">' + (g.ico || '★') + '</span>' +
+            '<div><b>' + sanitize(g.label || g.id) + '</b><br><small>' + sanitize(rl) + ' · ' + sanitize(g.id) + '</small>' +
+            (g.description ? ('<br><span class="note-sm">' + sanitize(g.description) + '</span>') : '') +
+            '</div></div>';
+        }).join('') + '</div>';
+        if (typeof Modal !== 'undefined' && Modal.open) {
+          Modal.open('Каталог артефактів (' + list.length + ')', html, [{ label: 'Закрити', cls: 'btn-s', action: 'cancel' }]);
+        }
+        return;
+      }
+
       if (action === 'save-settings') return Actions.saveSettings();
       if (action === 'save-rbac') {
         const coachesRaw = (document.getElementById('setCoaches')?.value || '').split(',').map(x => x.trim()).filter(Boolean);
@@ -1304,10 +1987,395 @@ const App = {
         }
         return;
       }
+      if (action === 'edit-self-player') {
+        e.preventDefault(); e.stopPropagation();
+        try {
+          const me = AuthManager.getLinkedPlayer && AuthManager.getLinkedPlayer();
+          if (me && typeof Actions !== 'undefined' && Actions.editPlayer) Actions.editPlayer(me.id);
+          else Toast.show('Профіль не прив\'язано', 'warn');
+        } catch (_) {}
+        return;
+      }
+      
+      if (action === 'upload-club-logo' || action === 'upload-coach-photo') {
+        e.preventDefault(); e.stopPropagation();
+        if (typeof AuthManager !== 'undefined' && AuthManager.isCoach && !AuthManager.isCoach()) {
+          Toast.show('Лише тренер', 'warn'); return;
+        }
+        const isCoach = action === 'upload-coach-photo';
+        const input = document.getElementById(isCoach ? 'settingsCoachPhotoInput' : 'settingsLogoInput')
+          || (() => {
+            const i = document.createElement('input');
+            i.type = 'file'; i.accept = 'image/*'; i.hidden = true;
+            document.body.appendChild(i);
+            return i;
+          })();
+        input.onchange = () => {
+          const file = input.files && input.files[0];
+          if (!file) return;
+          if (file.size > 2.5e6) { Toast.show('Максимум 2.5 МБ', 'warn'); return; }
+          const reader = new FileReader();
+          reader.onload = () => {
+            const data = reader.result;
+            const s = Store.get().settings;
+            if (isCoach) s.coachPhoto = data;
+            else s.logoData = data;
+            try { StorageManager.save(); } catch (_) {}
+            try { App.applyBranding && App.applyBranding(); } catch (_) {}
+            try { App.renderCurrent && App.renderCurrent(); } catch (_) {}
+            Toast.show(isCoach ? 'Фото тренера оновлено' : 'Логотип оновлено', 'ok');
+          };
+          reader.readAsDataURL(file);
+          input.value = '';
+        };
+        input.click();
+        return;
+      }
+
+      if (action === 'open-fifa-card' || action === 'open-player-card') {
+        e.preventDefault(); e.stopPropagation();
+        const pid = (t.dataset && t.dataset.playerId) || t.getAttribute('data-player-id');
+        const p = (Store.get().players || []).find(x => x.id === pid);
+        if (!p) return;
+        try { TelegramManager.haptic && TelegramManager.haptic('light'); } catch (_) {}
+        // Тренер бачить повну картку «як гравець» + інструменти; гравець — лише FIFA
+        const asCoach = (typeof AuthManager !== 'undefined' && AuthManager.isCoach && AuthManager.isCoach());
+        if (asCoach && typeof Views !== 'undefined' && Views.coachPlayerDetail) {
+          window.__coachCardPlayerId = p.id;
+          const html = Views.coachPlayerDetail(p.id);
+          if (typeof Modal !== 'undefined' && Modal.open) {
+            Modal.open('Картка гравця · ' + (p.lastName || p.firstName || ''), '<div class="fifa-modal-wrap" data-compare-host="' + p.id + '">' + html + '</div>', [{ label: 'Закрити', cls: 'btn-s', action: 'cancel' }]);
+            setTimeout(() => { try { const s2 = document.getElementById('playerCompareSel'); if (s2) s2._msCmpBound = false; App._bindPlayerCompare(); } catch (_) {} }, 40);
+          }
+        } else if (typeof Views !== 'undefined' && Views._fifaCard) {
+          window.__coachCardPlayerId = p.id;
+          window.__fifaCompareId = window.__fifaCompareId || '';
+          const st = Views._playerStats ? Views._playerStats(p.id) : {};
+          const html = Views._fifaCard(p, st);
+          if (typeof Modal !== 'undefined' && Modal.open) {
+            Modal.open('FIFA-картка · ' + (p.lastName || p.firstName || ''),
+              '<div class="fifa-modal-wrap" data-compare-host="' + p.id + '">' + html + '</div>',
+              [{ label: 'Закрити', cls: 'btn-s', action: 'cancel' }]);
+            setTimeout(() => {
+              try {
+                const s2 = document.getElementById('playerCompareSel');
+                if (s2) { s2._msCmpBound = false; App._bindPlayerCompare(); }
+              } catch (_) {}
+            }, 40);
+          }
+        }
+        return;
+      }
+      if (action === 'player-compare') {
+        e.preventDefault(); e.stopPropagation();
+        const sel = document.getElementById('playerCompareSel');
+        const oid = sel ? sel.value : (t.value || '');
+        try {
+          window.__playerCompareId = oid;
+          window.__coachCompareId = oid;
+        } catch (_) {}
+        // форсуємо оновлення через ту ж логіку, що й change
+        try {
+          if (sel) {
+            sel._msCmpBound = false;
+            App._bindPlayerCompare();
+            sel.dispatchEvent(new Event('change', { bubbles: true }));
+          } else {
+            App.renderCurrent();
+          }
+        } catch (_) { try { App.renderCurrent(); } catch (__) {} }
+        return;
+      }
+      
+    if (action === 'create-emoji-artifact') {
+      e.preventDefault(); e.stopPropagation();
+      if (typeof Auth !== 'undefined' && Auth.role && Auth.role() !== 'coach') {
+        if (typeof Toast !== 'undefined') Toast.show('Лише тренер', 'warn');
+        return;
+      }
+      const emoji = window.prompt('Emoji (наприклад 🚀 💎 🦊):', '🚀');
+      if (!emoji) return;
+      const label = window.prompt('Назва артефакту:', 'Новий артефакт');
+      if (!label) return;
+      const anim = window.prompt('Анімація: bounce|spin|pulse|sparkle|wiggle|heartbeat|flash|sway|launch', 'bounce') || 'bounce';
+      const rarity = window.prompt('Рідкість: common|rare|epic|legendary', 'rare') || 'rare';
+      if (typeof CoachTools !== 'undefined' && CoachTools.createEmojiArtifact) {
+        CoachTools.createEmojiArtifact({ ico: emoji, label, anim, rarity });
+        if (typeof App !== 'undefined' && App.renderCurrent) App.renderCurrent();
+      }
+      return;
+    }
+
+    if (action === 'inspect-artifact') {
+        e.preventDefault(); e.stopPropagation();
+        const uid = t.dataset.giftUid || t.getAttribute('data-gift-uid');
+        const s = Store.get();
+        const g = (s.gifts || []).find(x => x.id === uid);
+        if (!g) return;
+        const rar = (typeof CoachTools !== 'undefined' && CoachTools.RARITY_LABEL && CoachTools.RARITY_LABEL[g.rarity]) || g.rarity || '';
+        const isHoloEmblem = g.special === 'metalist-holo-emblem' || g.giftId === 'metalist_holo_emblem';
+        const isNeural = g.special === 'neural-horse' || g.giftId === 'neural_horse_tester';
+        const isGolden = g.special === 'golden-ball' || g.giftId === 'tyshchenko_first_golden_ball';
+        const isCoach = typeof AuthManager !== 'undefined' && AuthManager.isCoach && AuthManager.isCoach();
+        const attached = g.attached !== false;
+        let coachBtns = '';
+        if (isCoach) {
+          coachBtns =
+            '<div class="artifact-coach-actions">' +
+            '<button type="button" class="btn btn-s btn-sm" data-action="edit-gift-note" data-gift-uid="' + uid + '">✏️ Момент</button>' +
+            '<button type="button" class="btn btn-s btn-sm" data-action="toggle-attach-gift" data-gift-uid="' + uid + '">' +
+              (attached ? '📎 Зняти з профілю' : '📌 На профіль') + '</button>' +
+            (g.playerId ? ('<button type="button" class="btn btn-s btn-sm" data-action="set-featured-gift" data-player-id="' +
+              g.playerId + '" data-gift-uid="' + uid + '">⭐ Біля імені</button>') : '') +
+            '<button type="button" class="btn btn-s btn-sm btn-danger" data-action="delete-gift" data-gift-uid="' + uid + '">🗑 Видалити</button>' +
+            '</div>';
+        }
+        const html = '<div class="artifact-inspect' + (isNeural ? ' neural-inspect' : '') + (isGolden ? ' golden-inspect' : '') + (isHoloEmblem ? ' holo-emblem-inspect' : '') + '">' +
+          '<div class="artifact-inspect-stage">' +
+          (isHoloEmblem && typeof MetalistHoloEmblem !== 'undefined' ? MetalistHoloEmblem.inspectMarkup() : '<div class="artifact-hologram' + (isNeural ? ' art-neural-horse' : (isGolden ? ' art-golden-ball' : '')) + '" style="--art-hue:' + (g.hue != null ? g.hue : 42) + '">' +
+          '<span class="nft-art-core"></span><span class="nft-art-ico" style="font-size:48px">' + (g.ico || '★') + '</span>' +
+          '<span class="nft-art-wave"></span></div>') + '</div>' +
+          '<div class="artifact-inspect-meta">' +
+          '<div class="artifact-title">' + (typeof sanitize === 'function' ? sanitize(g.label) : g.label) + '</div>' +
+          '<div class="artifact-rar rarity-' + (g.rarity || 'common') + '">' + rar + (g.serial ? (' · ' + g.serial) : '') +
+            (attached ? ' · на профілі' : ' · у інвентарі') + '</div>' +
+          (g.description ? ('<p class="artifact-desc">' + (typeof sanitize === 'function' ? sanitize(g.description) : g.description) + '</p>') : '') +
+          (g.note ? ('<p class="artifact-note">«' + (typeof sanitize === 'function' ? sanitize(g.note) : g.note) + '»</p>') : '') +
+          (g.momentHint && !g.note ? ('<p class="artifact-hint">' + (typeof sanitize === 'function' ? sanitize(g.momentHint) : g.momentHint) + '</p>') : '') +
+          coachBtns +
+          '</div></div>';
+        if (typeof Modal !== 'undefined' && Modal.open) {
+          Modal.open('Артефакт клубу', html, [{ label: 'Закрити', cls: 'btn-s', action: 'cancel' }]);
+        }
+        try { TelegramManager.haptic && TelegramManager.haptic('medium'); } catch (_) {}
+        return;
+      }
+      if (action === 'edit-gift-note') {
+        e.preventDefault(); e.stopPropagation();
+        const uid = t.dataset.giftUid;
+        const g = (Store.get().gifts || []).find(x => x.id === uid);
+        if (!g) return;
+        const cur = g.note || '';
+        if (typeof Modal !== 'undefined' && Modal.prompt) {
+          Modal.prompt('Пам\'ятний момент (підпис до подарунка)', cur, (v) => {
+            if (v === null) return;
+            if (typeof CoachTools !== 'undefined' && CoachTools.editGiftNote) CoachTools.editGiftNote(uid, v);
+            try { if (typeof Modal.close) Modal.close(); } catch (_) {}
+            try { App.renderCurrent(); } catch (_) {}
+          });
+        } else {
+          const v = window.prompt('Пам\'ятний момент', cur);
+          if (v !== null && typeof CoachTools !== 'undefined' && CoachTools.editGiftNote) {
+            CoachTools.editGiftNote(uid, v);
+            try { App.renderCurrent(); } catch (_) {}
+          }
+        }
+        return;
+      }
+      if (action === 'toggle-attach-gift') {
+        e.preventDefault(); e.stopPropagation();
+        const uid = t.dataset.giftUid;
+        if (uid && typeof CoachTools !== 'undefined' && CoachTools.toggleAttachGift) {
+          CoachTools.toggleAttachGift(uid);
+          try { if (typeof Modal.close) Modal.close(); } catch (_) {}
+          try { App.renderCurrent(); } catch (_) {}
+        }
+        return;
+      }
+      if (action === 'delete-gift') {
+        e.preventDefault(); e.stopPropagation();
+        const uid = t.dataset.giftUid;
+        if (!uid) return;
+        const doDel = () => {
+          if (typeof CoachTools !== 'undefined' && CoachTools.deleteGift) CoachTools.deleteGift(uid);
+          try { if (typeof Modal.close) Modal.close(); } catch (_) {}
+          try { App.renderCurrent(); } catch (_) {}
+        };
+        if (typeof Modal !== 'undefined' && Modal.confirm) {
+          Modal.confirm('Видалити цей подарунок назавжди?', doDel);
+        } else if (window.confirm('Видалити цей подарунок назавжди?')) {
+          doDel();
+        }
+        return;
+      }
+      if (action === 'set-featured-gift') {
+        e.preventDefault(); e.stopPropagation();
+        const pid = t.dataset.playerId;
+        const gid = t.dataset.giftUid;
+        if (pid && gid && typeof CoachTools !== 'undefined' && CoachTools.setFeaturedGift) {
+          CoachTools.setFeaturedGift(pid, gid);
+          Toast.show('Подарунок біля імені оновлено', 'ok');
+          // refresh open FIFA modal if any
+          try {
+            window.__coachCardPlayerId = pid;
+            if (typeof Views !== 'undefined' && Views._fifaCard) {
+              const p = (Store.get().players || []).find(x => x.id === pid);
+              const st = Views._playerStats ? Views._playerStats(pid) : {};
+              const asCoach = typeof AuthManager !== 'undefined' && AuthManager.isCoach && AuthManager.isCoach();
+              let html = asCoach && Views.coachPlayerDetail
+                ? Views.coachPlayerDetail(pid)
+                : Views._fifaCard(p, st);
+              if (typeof Modal !== 'undefined' && Modal.open) {
+                Modal.open((asCoach ? 'Картка гравця' : 'FIFA-картка') + ' · ' + ((p && (p.lastName || p.firstName)) || ''),
+                  '<div class="fifa-modal-wrap" data-compare-host="' + pid + '">' + html + '</div>',
+                  [{ label: 'Закрити', cls: 'btn-s', action: 'cancel' }]);
+              }
+            }
+          } catch (_) {}
+          try { App.renderCurrent(); } catch (_) {}
+        }
+        return;
+      }
+      if (action === 'squad-view') {
+        e.preventDefault(); e.stopPropagation();
+        window.__squadViewMode = t.dataset.mode || 'list';
+        try { App.renderCurrent(); } catch (_) {}
+        return;
+      }
+      if (action === 'toggle-avatar-chips') {
+        e.preventDefault(); e.stopPropagation();
+        const s = Store.get();
+        if (!s.activeBoard) s.activeBoard = {};
+        s.activeBoard.useAvatars = !s.activeBoard.useAvatars;
+        try { document.body.classList.toggle('board-avatars', !!s.activeBoard.useAvatars); } catch (_) {}
+        try { StorageManager.save(); } catch (_) {}
+        if (typeof BoardEngine !== 'undefined') {
+          if (BoardEngine.renderTokens) BoardEngine.renderTokens();
+          if (BoardEngine.renderToolbar) BoardEngine.renderToolbar();
+        }
+        Toast.show(s.activeBoard.useAvatars ? 'Аватар-фішки увімкнено' : 'Звичайні фішки', 'ok');
+        return;
+      }
+      if (action === 'all-to-bench' || action === 'rest-to-bench') {
+        e.preventDefault(); e.stopPropagation();
+        // Тільки гравці зі складу, яких ЩЕ НЕМАЄ на полі/лавці — на лавку
+        if (typeof BoardEngine !== 'undefined' && BoardEngine.sendAvailableToBench) {
+          const n = BoardEngine.sendAvailableToBench();
+          Toast.show(n > 0 ? (n + ' гравців зі списку на лавці') : 'Немає вільних у списку', n > 0 ? 'ok' : 'warn');
+        }
+        return;
+      }
+      if (action === 'award-gift') {
+        e.preventDefault(); e.stopPropagation();
+        if (typeof AuthManager !== 'undefined' && AuthManager.isCoach && !AuthManager.isCoach()) {
+          Toast.show('Лише тренер може нагороджувати', 'warn'); return;
+        }
+        const pid = t.dataset.playerId;
+        const gid = t.dataset.giftId;
+        if (pid && gid && typeof CoachTools !== 'undefined' && CoachTools.awardGift) {
+          // Памʼятний підпис — ТІЛЬКИ разом із подарунком
+          let note = '';
+          try {
+            note = window.prompt('Підпис до подарунка (памʼятний момент, необовʼязково):', '') || '';
+          } catch (_) { note = ''; }
+          const gift = CoachTools.awardGift(pid, gid, note);
+          if (note && gift && typeof CoachTools.addMoment === 'function') {
+            try { CoachTools.addMoment(pid, note, gift.id); } catch (_) {}
+          }
+          window.__coachCardPlayerId = pid;
+          if (typeof Views !== 'undefined' && Views.coachPlayerDetail && typeof Modal !== 'undefined' && Modal.open) {
+            const p = (Store.get().players || []).find(x => x.id === pid);
+            Modal.open('Картка гравця · ' + ((p && (p.lastName || p.firstName)) || ''),
+              '<div class="fifa-modal-wrap" data-compare-host="' + pid + '">' + Views.coachPlayerDetail(pid) + '</div>',
+              [{ label: 'Закрити', cls: 'btn-s', action: 'cancel' }]);
+            setTimeout(() => { try { const s2 = document.getElementById('playerCompareSel'); if (s2) { s2._msCmpBound = false; App._bindPlayerCompare(); } } catch (_) {} }, 40);
+          }
+          try { App.renderCurrent(); } catch (_) {}
+        }
+        return;
+      }
+      if (action === 'add-moment') {
+        e.preventDefault(); e.stopPropagation();
+        Toast.show('Памʼятний момент додається лише з подарунком — оберіть подарунок вище', 'warn');
+        return;
+      }
+      if (action === 'attach-gift') {
+        e.preventDefault(); e.stopPropagation();
+        const gid = t.dataset.giftId;
+        if (gid && typeof CoachTools !== 'undefined' && CoachTools.attachGift) CoachTools.attachGift(gid);
+        try { if (typeof App !== 'undefined' && App.renderCurrent) App.renderCurrent(); } catch (_) {}
+        return;
+      }
+      if (action === 'edit-player-form') {
+        e.preventDefault(); e.stopPropagation();
+        const pid = t.dataset.playerId;
+        if (pid && typeof Actions !== 'undefined' && Actions.editPlayer) Actions.editPlayer(pid);
+        return;
+      }
+      if (action === 'open-stopwatch') {
+        e.preventDefault(); e.stopPropagation();
+        return this.openStopwatch();
+      }
+      if (action === 'coach-easter') {
+        e.preventDefault(); e.stopPropagation();
+        return this.openCoachCard();
+      }
+      if (action === 'open-coach-card') {
+        e.preventDefault(); e.stopPropagation();
+        if (typeof App !== 'undefined' && App.openCoachCard) App.openCoachCard();
+        return;
+      }
+      if (action === 'close-coach-card') {
+        e.preventDefault(); e.stopPropagation();
+        return this.closeCoachCard();
+      }
+      if (action === 'toggle-theme') {
+        e.preventDefault(); e.stopPropagation();
+        const set = t.dataset.themeSet;
+        if (set === 'light' || set === 'dark') return this.applyThemeMode(set);
+        return this.toggleTheme();
+      }
+      if (action === 'board-delete-selected') {
+        e.preventDefault(); e.stopPropagation();
+        try {
+          if (typeof BoardEngine !== 'undefined' && BoardEngine.deleteSelected) {
+            const sel = Store.get().activeBoard && Store.get().activeBoard.selectedId;
+            if (!sel) { Toast.show('Спочатку виберіть об\'єкт', 'warn'); return; }
+            BoardEngine.deleteSelected();
+            Toast.show('Видалено', 'ok');
+          }
+        } catch (_) {}
+        return;
+      }
+      if (action === 'toggle-bench') {
+        e.preventDefault(); e.stopPropagation();
+        try {
+          if (typeof BoardEngine !== 'undefined' && BoardEngine.toggleBenchCollapsed) {
+            const c = BoardEngine.toggleBenchCollapsed();
+            Toast.show(c ? 'Лавку згорнуто' : 'Лавка відкрита', 'ok');
+          } else {
+            document.body.classList.toggle('bench-collapsed');
+          }
+        } catch (_) {}
+        return;
+      }
+      if (action === 'toggle-tools-tray') {
+        e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+        const ab = Store.get().activeBoard;
+        if (!ab) return;
+        ab.toolsTrayOpen = !ab.toolsTrayOpen;
+        if (ab.toolsTrayOpen) ab.paletteOpen = false;
+        document.body.classList.toggle('tools-tray-open', !!ab.toolsTrayOpen);
+        // Re-render toolbar so tray HTML matches state, then force-open portal
+        try { BoardEngine.renderToolbar && BoardEngine.renderToolbar(); } catch (_) {}
+        const tray = document.getElementById('btbToolsTray');
+        if (tray) {
+          tray.classList.toggle('open', !!ab.toolsTrayOpen);
+          tray.setAttribute('aria-hidden', ab.toolsTrayOpen ? 'false' : 'true');
+          // Portal to body so overflow:hidden parents cannot clip it (iOS Telegram)
+          if (ab.toolsTrayOpen && tray.parentElement !== document.body) {
+            document.body.appendChild(tray);
+          }
+        }
+        try { TelegramManager.haptic && TelegramManager.haptic('light'); } catch (_) {}
+        return;
+      }
       if (action === 'toggle-palette') {
         e.preventDefault(); e.stopPropagation();
         const ab = Store.get().activeBoard;
         ab.paletteOpen = !ab.paletteOpen;
+        if (ab.paletteOpen) ab.toolsTrayOpen = false;
+        document.body.classList.toggle('tools-tray-open', false);
         try { BoardEngine.renderToolbar(); } catch (_) {}
         return;
       }
@@ -1353,10 +2421,16 @@ const App = {
 
       if (action === 'exit-board') {
         e.preventDefault(); e.stopPropagation();
-        try { BoardEngine.leaveBoardMode && BoardEngine.leaveBoardMode(); } catch (_) {
-          try { BoardEngine.exitFullscreen && BoardEngine.exitFullscreen(); } catch (_) {}
-          document.body.classList.remove('board-fs-nav','board-only-mode','mode-board-focus','board-workspace','present-mode');
-        }
+        try { BoardEngine.closeToolsTray && BoardEngine.closeToolsTray(true); } catch (_) {}
+        try { BoardEngine.leaveBoardMode && BoardEngine.leaveBoardMode(); } catch (_) {}
+        try { BoardEngine.exitFullscreen && BoardEngine.exitFullscreen(); } catch (_) {}
+        document.body.classList.remove(
+          'board-fs-nav', 'board-only-mode', 'mode-board-focus', 'board-workspace',
+          'present-mode', 'tools-tray-open', 'bench-collapsed', 'board-on', 'board-active'
+        );
+        try {
+          document.querySelectorAll('body > #btbToolsTray, body > .btb-tray').forEach(el => el.remove());
+        } catch (_) {}
         App.navigate('dashboard');
         return;
       }
@@ -1401,8 +2475,25 @@ const App = {
         e.preventDefault();
         e.stopPropagation();
         if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
-        // ТІЛЬКИ модалка деталей — без переходу на дошку
-        return Actions.editTraining(t.dataset.editTraining);
+        // Застарілий атрибут: відкриваємо sheet (план+статистика), не форсуємо edit
+        if (this._lpSuppressClick) return;
+        return this.openTrainingActionSheet(t.dataset.editTraining);
+      }
+      // Короткий тап по картці тренування → план + статистика (не редагування)
+      if (t.dataset.trainingId && t.classList && t.classList.contains('card-training')) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (this._lpSuppressClick) return;
+        return this.openTrainingActionSheet(t.dataset.trainingId);
+      }
+      if (t.closest && t.closest('.card-training[data-training-id]') && !t.dataset.action) {
+        const row = t.closest('.card-training[data-training-id]');
+        if (row && !e.target.closest('button, a, input')) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (this._lpSuppressClick) return;
+          return this.openTrainingActionSheet(row.dataset.trainingId);
+        }
       }
       if (t.dataset.nextTraining) {
         e.preventDefault(); e.stopPropagation();
@@ -1643,8 +2734,11 @@ const App = {
       if (e.target.dataset.filter === 'trainings') {
         const q = (document.getElementById('trSearch')?.value || '').toLowerCase();
         const st = document.getElementById('trStatus')?.value || '';
-        let list = Store.get().trainings.slice().sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-        if (q) list = list.filter(t => t.name.toLowerCase().includes(q));
+        const isCoach = typeof AuthManager !== 'undefined' && AuthManager.isCoach && AuthManager.isCoach();
+        let list = Store.get().trainings.slice();
+        if (!isCoach) list = list.filter(t => t.status !== 'draft' && t.status !== 'pinned');
+        list.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+        if (q) list = list.filter(t => (t.name || '').toLowerCase().includes(q));
         if (st) list = list.filter(t => t.status === st);
         const el = document.getElementById('trList');
         if (el) el.innerHTML = Views._trList(list);

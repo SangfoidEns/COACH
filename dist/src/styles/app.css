@@ -4005,16 +4005,10 @@ body.role-guest .nav[data-view="board"],
 body.role-guest .nav[data-view="analytics"],
 body.role-guest .nav[data-view="diary"],
 body.role-guest .nav[data-view="settings"],
-body.role-guest .nav[data-view="trainings"],
 body.role-guest .mni[data-view="board"],
 body.role-guest .mni[data-view="analytics"],
 body.role-guest .mni[data-view="diary"],
-body.role-guest .mni[data-view="settings"],
-body.role-guest .mni[data-view="trainings"],
-body.role-player .nav[data-view="analytics"],
-body.role-player .nav[data-view="diary"],
-body.role-player .mni[data-view="analytics"],
-body.role-player .mni[data-view="diary"] { display: none !important; }
+body.role-guest .mni[data-view="settings"] { display: none !important; }
 /* Гравець МАЄ доступ до дошки — не ховати */
 body.role-player .nav[data-view="board"],
 body.role-player .mni[data-view="board"] { display: flex !important; }
@@ -7067,3 +7061,1317 @@ body.mode-board-focus #playersLayer .pt {
 #playersLayer .pt .pt-num {
   font-size: inherit !important;
 }
+
+
+/* ===== 2026.10.24-m board tray / bench / player UI ===== */
+body:not(.mode-board-focus) #btbToolsTray,
+body:not(.mode-board-focus) .btb-tray,
+body:not(.mode-board-focus) > #btbToolsTray {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  opacity: 0 !important;
+}
+
+/* Collapsible bench */
+.bench-head {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+.bench-toggle {
+  width: 28px; height: 28px; border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.06);
+  color: #fff; font-size: 16px; cursor: pointer;
+  flex-shrink: 0;
+}
+body.bench-collapsed .bench-panel {
+  flex-basis: 0 !important;
+  max-width: 0 !important;
+  min-width: 0 !important;
+  width: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  overflow: hidden !important;
+  opacity: 0 !important;
+}
+.bench-fab {
+  display: none;
+  position: absolute;
+  left: 8px; top: 50%;
+  transform: translateY(-50%);
+  z-index: 40;
+  width: 36px; height: 44px;
+  border-radius: 0 12px 12px 0;
+  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(14,18,28,0.92);
+  color: #fff; font-size: 16px;
+  backdrop-filter: blur(12px);
+}
+body.bench-collapsed .bench-fab {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+}
+body.mode-board-focus #boardArea {
+  display: flex !important;
+}
+body.bench-collapsed #fieldContainer {
+  flex: 1 1 auto !important;
+}
+
+.tb-del { color: #ff8a80 !important; }
+
+/* Player squad cards */
+.pl-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+  padding: 4px 0 24px;
+}
+.pl-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 14px 10px;
+  border-radius: 16px;
+  cursor: pointer;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(20,24,32,0.75);
+  transition: transform 0.15s ease, border-color 0.15s;
+}
+.pl-card:active { transform: scale(0.98); }
+.pl-card-av {
+  width: 64px; height: 64px; border-radius: 50%;
+  overflow: hidden; border: 2px solid;
+  display: grid; place-items: center;
+  margin-bottom: 8px;
+}
+.pl-card-av img { width: 100%; height: 100%; object-fit: cover; }
+.pl-card-name { font-weight: 700; font-size: 13px; }
+.pl-card-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.pl-card-att { font-size: 11px; color: var(--club-accent); margin-top: 6px; }
+
+/* Training sheet stats */
+.tr-plan-preview { text-align: left; margin: 8px 0 12px; }
+.tr-plan-title { font-size: 12px; font-weight: 700; color: var(--muted); margin: 8px 0 6px; text-transform: uppercase; letter-spacing: 0.04em; }
+.tr-plan-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+.tr-goal { margin-bottom: 8px; font-size: 13px; }
+.tr-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 12px;
+}
+.tr-stat {
+  background: rgba(255,255,255,0.05);
+  border-radius: 12px;
+  padding: 10px 6px;
+  text-align: center;
+}
+.tr-stat b { display: block; font-size: 16px; color: var(--club-accent); }
+.tr-stat span { font-size: 10px; color: var(--muted); }
+
+/* Role-based bottom nav */
+body.role-coach .mni-player { display: none !important; }
+body.role-player .mni-coach,
+body.role-guest .mni-coach { display: none !important; }
+body.role-player .mni-player,
+body.role-guest .mni-player { display: flex !important; }
+body:not(.role-player):not(.role-guest) .mni-player { display: none !important; }
+body:not(.role-coach) .mni-coach { display: none !important; }
+/* default (no role / coach local): show coach trainings tab */
+body:not(.role-player):not(.role-guest) .mni-coach { display: flex !important; }
+
+#mobileNav.glass-nav {
+  display: flex !important;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  gap: 0;
+}
+#mobileNav .mni {
+  flex: 1 1 0;
+  min-width: 52px;
+}
+
+/* board-on tools tray kill — never show tray outside board */
+body:not(.board-on):not(.mode-board-focus) #btbToolsTray,
+body:not(.board-on):not(.mode-board-focus) .btb-tray,
+body:not(.board-on) > #btbToolsTray,
+body.board-on:not(.mode-board-focus) > #btbToolsTray {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* ===== 2026.10.24-p photo / coach / branding / status ===== */
+.cp-club-brand { font-size: 15px; font-weight: 700; letter-spacing: 0.02em; }
+.cp-brand-a { color: #f0c14b !important; } /* Металіст — жовтий */
+.cp-brand-b { color: #ffffff !important; } /* Штутгарт — білий */
+.cp-role-line { margin-top: 6px; }
+.cp-role-kind { color: #ffffff !important; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; opacity: 0.9; }
+.cp-title-name { color: #f0c14b !important; }
+
+.card-training.is-planned {
+  border-left: 3px solid #4fc3f7 !important;
+  background: rgba(79, 195, 247, 0.06);
+}
+.card-training.is-done {
+  border-left: 3px solid #81c784 !important;
+  background: rgba(129, 199, 132, 0.08);
+}
+.card-training.is-cancelled {
+  border-left: 3px solid #e57373 !important;
+  opacity: 0.72;
+}
+
+.pl-row.is-me,
+.pl-card.is-me,
+.tg-row.is-me {
+  outline: 2px solid var(--club-accent, #c8a84b);
+  outline-offset: 1px;
+  background: rgba(200, 168, 75, 0.12) !important;
+  box-shadow: 0 0 0 1px rgba(200, 168, 75, 0.35);
+}
+.pl-row.is-me::after,
+.pl-card.is-me::after {
+  content: "ви";
+  position: absolute;
+  top: 6px; right: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #f0c14b;
+  text-transform: uppercase;
+}
+.pl-row, .pl-card { position: relative; }
+
+.coach-public-card .coach-pub-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: inherit;
+  padding: 8px 0;
+  cursor: pointer;
+}
+.coach-pub-av {
+  width: 52px; height: 52px; border-radius: 50%;
+  overflow: hidden; border: 2px solid #c8a84b;
+  background: linear-gradient(145deg, #3a2a0a, #1a1205);
+  display: grid; place-items: center; flex-shrink: 0;
+}
+.coach-pub-av img { width: 100%; height: 100%; object-fit: cover; }
+.coach-pub-name { font-weight: 700; color: #f0c14b; }
+.coach-pub-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+.coach-card-fifa .cc-stats {
+  display: grid !important;
+  grid-template-columns: repeat(4, 1fr) !important;
+  gap: 6px !important;
+}
+.coach-card-fifa .cc-stat span { font-size: 9px !important; }
+.coach-card-fifa .cc-stat b { font-size: 12px !important; }
+
+/* ===== 2026.10.24-q scheme picker + gifts orbit + selects ===== */
+.btb-pick {
+  flex: 1 1 48%;
+  min-height: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.08);
+  color: #f2f5f8 !important;
+  cursor: pointer;
+  text-align: left;
+}
+.btb-pick-lb { font-size: 10px; color: rgba(255,255,255,0.55); text-transform: uppercase; letter-spacing: 0.04em; }
+.btb-pick-val { font-size: 14px; font-weight: 700; color: #f0c14b !important; }
+.sr-only-select {
+  position: absolute !important;
+  width: 1px !important; height: 1px !important;
+  opacity: 0 !important; pointer-events: none !important;
+  left: -9999px !important;
+}
+
+.scheme-picker { max-height: 60vh; overflow: auto; }
+.scheme-pick-group { margin-bottom: 14px; }
+.scheme-pick-title {
+  font-size: 11px; font-weight: 700; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;
+}
+.scheme-pick-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+}
+.scheme-pick-btn {
+  min-height: 44px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.06);
+  color: #f2f5f8 !important;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+}
+.scheme-pick-btn:active {
+  background: rgba(240,193,75,0.2);
+  border-color: #f0c14b;
+  color: #f0c14b !important;
+}
+
+/* native select safety if still used */
+.btb-tray select,
+.btb-tray-row-selects select,
+#schemeSel, #fieldViewSel {
+  color-scheme: dark;
+  background: #1a1f2a !important;
+  color: #f2f5f8 !important;
+}
+.btb-tray select option,
+#schemeSel option, #fieldViewSel option {
+  background: #1a1f2a !important;
+  color: #f2f5f8 !important;
+}
+
+/* gift orbit animation */
+.cp-gift-orbit { z-index: 3; }
+.cp-gift-anim {
+  animation: giftPulse 2.4s ease-in-out infinite;
+  animation-delay: calc(var(--gi, 0) * 0.18s);
+}
+@keyframes giftPulse {
+  0%, 100% { transform: translate(var(--tx, 0), var(--ty, 0)) scale(1); opacity: 1; }
+  50% { transform: translate(var(--tx, 0), var(--ty, 0)) scale(1.12); opacity: 0.92; }
+}
+/* use left/top already; pulse via filter */
+.cp-gift-orb.cp-gift-anim {
+  animation: giftGlow 2.2s ease-in-out infinite;
+  animation-delay: calc(var(--gi, 0) * 0.15s);
+}
+@keyframes giftGlow {
+  0%, 100% { box-shadow: 0 2px 8px rgba(0,0,0,0.35); filter: brightness(1); }
+  50% { box-shadow: 0 0 14px rgba(240,193,75,0.55); filter: brightness(1.15); }
+}
+
+.compare-card select#playerCompareSel {
+  color-scheme: dark;
+  background: #12161e !important;
+  color: #f2f5f8 !important;
+  border: 1px solid rgba(240,193,75,0.35);
+  min-height: 44px;
+  border-radius: 10px;
+  width: 100%;
+  font-size: 15px;
+}
+.compare-card select#playerCompareSel option {
+  background: #12161e;
+  color: #f2f5f8;
+}
+
+/* FIFA gifts + compare inside card */
+.fifa-avatar-wrap {
+  position: relative;
+  width: 88px;
+  height: 88px;
+  display: grid;
+  place-items: center;
+}
+.fifa-avatar-wrap .fifa-avatar {
+  width: 72px !important;
+  height: 72px !important;
+}
+.fifa-gift-orbit {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+}
+.fifa-gifts-block {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
+.fifa-gifts-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+}
+.fifa-gifts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.fifa-gift-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(240,193,75,0.12);
+  border: 1px solid rgba(240,193,75,0.35);
+  font-size: 12px;
+  color: #f0c14b;
+}
+.fifa-card .compare-card {
+  margin-top: 12px;
+  background: rgba(0,0,0,0.2);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.pl-card-av-wrap {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 8px;
+}
+.pl-card-av-wrap .pl-card-av {
+  width: 64px;
+  height: 64px;
+  margin: 4px auto 0;
+}
+.pl-card-gifts {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.pl-card-giftline {
+  margin-top: 6px;
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  font-size: 14px;
+}
+
+/* ═══ Telegram-style gift cloud (around avatar, not on face/name) ═══ */
+.cp-avatar-wrap,
+.pl-card-av-wrap,
+.fifa-avatar-wrap {
+  position: relative !important;
+  display: grid !important;
+  place-items: center !important;
+  overflow: visible !important;
+}
+.cp-avatar-wrap {
+  width: 120px !important;
+  height: 120px !important;
+  margin: 0 auto 8px !important;
+}
+.cp-avatar-wrap .cp-avatar {
+  width: 88px !important;
+  height: 88px !important;
+  margin: 0 !important;
+  z-index: 2;
+  position: relative;
+}
+.pl-card-av-wrap {
+  width: 88px !important;
+  height: 88px !important;
+  margin: 0 auto 10px !important;
+}
+.pl-card-av-wrap .pl-card-av {
+  width: 64px !important;
+  height: 64px !important;
+  margin: 0 !important;
+  z-index: 2;
+  position: relative;
+  border-radius: 50%;
+  overflow: hidden;
+}
+.fifa-avatar-wrap {
+  width: 100px !important;
+  height: 100px !important;
+}
+.fifa-avatar-wrap .fifa-avatar {
+  z-index: 2;
+  position: relative;
+}
+
+.tg-gift-cloud {
+  position: absolute !important;
+  inset: 0 !important;
+  pointer-events: none !important;
+  z-index: 4 !important;
+  overflow: visible !important;
+}
+/* neutralized conflicting tg-gift-item block */
+@keyframes tgGiftFloat {
+  0%, 100% { transform: translate(var(--gx), var(--gy)) translateY(0) scale(1); }
+  35% { transform: translate(var(--gx), calc(var(--gy) - 7px)) scale(1.06); }
+  70% { transform: translate(calc(var(--gx) + 3px), calc(var(--gy) - 2px)) scale(1.02); }
+}
+
+/* Status badge near name (not on avatar) */
+.gift-status-badge {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  margin-left: 6px !important;
+  padding: 2px 8px !important;
+  border-radius: 999px !important;
+  background: rgba(240, 193, 75, 0.14) !important;
+  border: 1px solid rgba(240, 193, 75, 0.4) !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  color: #f0c14b !important;
+  vertical-align: middle !important;
+  white-space: nowrap !important;
+}
+
+/* Hide old circular orbit leftovers */
+.cp-gift-orbit,
+.pl-card-gifts,
+.fifa-gift-orbit { display: none !important; }
+.pl-card-giftline { display: none !important; }
+
+/* Scheme / field picker modal */
+.scheme-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  max-height: min(60vh, 420px);
+  overflow: auto;
+  padding: 4px;
+}
+.scheme-pick-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(20, 24, 32, 0.85);
+  color: #f2f5f8;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.scheme-pick-item.on {
+  border-color: rgba(240, 193, 75, 0.65);
+  background: rgba(240, 193, 75, 0.12);
+  color: #f0c14b;
+  box-shadow: 0 0 0 1px rgba(240, 193, 75, 0.25);
+}
+.scheme-pick-item:active { transform: scale(0.97); }
+
+/* allow gift cloud outside clean profile card */
+.cp-clean { overflow: visible !important; }
+.cp-hero.cp-person { overflow: visible !important; }
+.pl-card { overflow: visible !important; }
+.pl-cards { overflow: visible !important; }
+
+/* ═══ NFT Artifacts (Telegram Gifts style) ═══ */
+.tg-gift-item.nft-art {
+  width: 34px !important;
+  height: 34px !important;
+  margin: -17px 0 0 -17px !important;
+  border-radius: 12px !important;
+  background:
+    radial-gradient(circle at 30% 25%, hsla(var(--art-hue, 42), 90%, 70%, 0.55), transparent 55%),
+    linear-gradient(145deg, hsla(var(--art-hue, 42), 70%, 28%, 0.95), rgba(12, 14, 20, 0.95)) !important;
+  border: 1.5px solid hsla(var(--art-hue, 42), 80%, 55%, 0.65) !important;
+  box-shadow:
+    0 4px 14px rgba(0,0,0,0.45),
+    0 0 12px hsla(var(--art-hue, 42), 90%, 50%, 0.25) !important;
+  overflow: hidden;
+}
+.tg-gift-item.nft-art::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-conic-gradient(from calc(var(--art-pattern, 0) * 30deg),
+      transparent 0 12deg,
+      hsla(var(--art-hue, 42), 80%, 70%, 0.08) 12deg 18deg);
+  opacity: 0.7;
+  pointer-events: none;
+}
+.nft-art-ico { position: relative; z-index: 1; font-size: 16px; }
+.rarity-common { --art-hue: 200; }
+.rarity-rare { filter: saturate(1.15); }
+.rarity-epic {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.45), 0 0 18px hsla(var(--art-hue, 280), 90%, 55%, 0.4) !important;
+}
+.rarity-legendary {
+  border-color: hsla(42, 95%, 60%, 0.9) !important;
+  box-shadow: 0 4px 18px rgba(0,0,0,0.5), 0 0 22px rgba(240, 193, 75, 0.45) !important;
+  animation: tgGiftFloat 3.4s ease-in-out infinite, nftShine 2.8s ease-in-out infinite !important;
+}
+@keyframes nftShine {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.2) saturate(1.15); }
+}
+
+.fifa-gift-chip.nft-chip {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 6px 10px;
+  background: linear-gradient(145deg, hsla(var(--art-hue, 42), 50%, 22%, 0.9), rgba(12,14,20,0.9));
+  border-color: hsla(var(--art-hue, 42), 70%, 50%, 0.5);
+}
+.fifa-gift-chip.nft-chip small {
+  font-size: 10px;
+  opacity: 0.75;
+  font-weight: 600;
+}
+.gift-status-badge.rarity-legendary {
+  background: rgba(240,193,75,0.22);
+  border-color: rgba(240,193,75,0.7);
+}
+.gift-status-badge.rarity-epic {
+  background: rgba(155,89,182,0.2);
+  border-color: rgba(155,89,182,0.55);
+}
+
+.gift-award-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-height: 64px;
+  border-radius: 14px;
+  border: 1px solid hsla(var(--art-hue, 42), 60%, 50%, 0.35);
+  background: linear-gradient(160deg, hsla(var(--art-hue, 42), 40%, 18%, 0.9), rgba(16,18,24,0.95));
+}
+.gift-award-btn .gift-aw-rar {
+  font-size: 10px;
+  opacity: 0.7;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.gift-award-btn.rarity-legendary {
+  border-color: rgba(240,193,75,0.65);
+  box-shadow: 0 0 14px rgba(240,193,75,0.2);
+}
+
+.compare-result-host { margin-top: 12px; }
+.compare-empty {
+  padding: 16px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  border: 1px dashed rgba(255,255,255,0.12);
+  border-radius: 12px;
+}
+.compare-select {
+  width: 100%;
+  min-height: 44px;
+  border-radius: 12px;
+  background: #12161e !important;
+  color: #f2f5f8 !important;
+  border: 1px solid rgba(240,193,75,0.35);
+  font-size: 15px;
+  padding: 8px 12px;
+}
+.compare-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.compare-col {
+  background: rgba(0,0,0,0.22);
+  border-radius: 12px;
+  padding: 10px;
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.compare-name {
+  font-weight: 800;
+  font-size: 13px;
+  margin-bottom: 8px;
+  color: #f0c14b;
+}
+
+.artifact-catalog-list { display: flex; flex-direction: column; gap: 8px; max-height: min(60vh, 480px); overflow: auto; }
+.artifact-cat-row {
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 10px 12px; border-radius: 14px;
+  background: linear-gradient(145deg, hsla(var(--art-hue, 42), 40%, 18%, 0.85), rgba(14,16,22,0.95));
+  border: 1px solid hsla(var(--art-hue, 42), 60%, 50%, 0.35);
+}
+.artifact-cat-row .ico { font-size: 28px; line-height: 1; }
+.artifact-cat-row b { font-size: 14px; }
+#artifactJsonInput {
+  width: 100%; min-height: 120px; border-radius: 12px;
+  background: #12161e; color: #f2f5f8; border: 1px solid rgba(255,255,255,0.12);
+  font-family: ui-monospace, monospace; font-size: 12px; padding: 10px;
+}
+
+/* Telegram gift expand */
+.tg-gift-cloud.tg-gift-expand { position:absolute; inset:0; pointer-events:none; z-index:4; overflow:visible; }
+/* neutralized tg-gift-item pop block */
+.tg-gift-item .nft-art-ico { font-size:14px; line-height:1; }
+@keyframes tgGiftPop {
+  0% { transform: translate(0,0) scale(0.2); opacity:0; }
+  70% { opacity:1; }
+  100% { transform: translate(var(--gx), var(--gy)) scale(1); opacity:1; }
+}
+.mode-right3 .tg-gift-item { width:32px; height:32px; margin:-16px 0 0 -16px; }
+.mode-mini3 .tg-gift-item { width:22px; height:22px; margin:-11px 0 0 -11px; }
+.mode-mini3 .tg-gift-item .nft-art-ico { font-size:11px; }
+
+.fifa-club { display:flex; align-items:center; gap:8px; }
+.fifa-club-mark { width:28px; height:28px; object-fit:contain; }
+.fifa-featured-pick { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-top:8px; }
+.gift-feat-btn {
+  width:32px; height:32px; border-radius:50%; border:1px solid rgba(255,255,255,0.2);
+  background:rgba(255,255,255,0.06); font-size:16px; cursor:pointer;
+}
+.gift-feat-btn.on { border-color:#f0c14b; box-shadow:0 0 0 2px rgba(240,193,75,0.35); }
+
+.compare-chart-wrap { margin-top:12px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.08); }
+.compare-svg { display:block; width:100%; max-width:360px; margin:0 auto; }
+
+.squad-view-toggle { display:inline-flex; gap:4px; margin:0 8px; }
+.squad-view-toggle .btn-s.on { background:rgba(240,193,75,0.2); border-color:#f0c14b; color:#f0c14b; }
+
+.coach-stats-strip {
+  display:grid; grid-template-columns:repeat(4,1fr); gap:8px;
+  padding:10px 12px; margin:8px 0 12px; border-radius:14px;
+}
+.css-item { text-align:center; }
+.css-item b { display:block; font-size:15px; color:#f0c14b; }
+.css-item span { font-size:10px; color:var(--muted); }
+
+/* Avatar chips on board — 2× size, ring fully around photo
+   Specificity must beat #playersLayer .pt.pt-bench-style (40px lock) */
+#playersLayer .pt.pt-bench-style.pt-avatar-chip,
+#playersLayer .pt.pt-avatar-chip.pt-bench-style {
+  width: 72px !important;
+  height: 72px !important;
+  min-width: 72px !important;
+  min-height: 72px !important;
+  max-width: none !important;
+  max-height: none !important;
+  margin: 0 !important;
+  overflow: visible !important;
+}
+#playersLayer .pt.pt-bench-style.pt-avatar-chip .pt-wrap {
+  position: relative !important;
+  width: 72px !important;
+  height: 72px !important;
+  flex-shrink: 0 !important;
+}
+#playersLayer .pt.pt-bench-style.pt-avatar-chip .pt-load-ring {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 72px !important;
+  height: 72px !important;
+  left: 0 !important;
+  top: 0 !important;
+  transform: none !important;
+  pointer-events: none !important;
+  z-index: 2 !important;
+  overflow: visible !important;
+}
+#playersLayer .pt.pt-bench-style.pt-avatar-chip .pt-avatar {
+  position: absolute !important;
+  left: 50% !important;
+  top: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  width: 52px !important;
+  height: 52px !important;
+  border-radius: 50% !important;
+  overflow: hidden !important;
+  z-index: 1 !important;
+  box-shadow: 0 2px 6px rgba(0,0,0,.45) !important;
+  background: #1a2332 !important;
+}
+#playersLayer .pt.pt-bench-style.pt-avatar-chip .pt-photo {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  border-radius: 50% !important;
+  display: block !important;
+}
+#playersLayer .pt.pt-bench-style.pt-avatar-chip .pt-num {
+  position: absolute !important;
+  left: 50% !important;
+  bottom: 2px !important;
+  transform: translateX(-50%) !important;
+  z-index: 3 !important;
+  font-size: 11px !important;
+  font-weight: 800 !important;
+  color: #fff !important;
+  text-shadow: 0 1px 3px #000 !important;
+  background: rgba(0,0,0,0.55) !important;
+  border-radius: 4px !important;
+  padding: 0 4px !important;
+  line-height: 1.2 !important;
+}
+#playersLayer .pt.pt-bench-style.pt-avatar-chip .tn {
+  top: calc(100% + 4px) !important;
+  font-size: 10px !important;
+  white-space: nowrap !important;
+}
+#playersLayer .pt.pt-bench-style.pt-avatar-chip.sel .pt-avatar {
+  box-shadow: 0 0 0 3px #d5ff3f, 0 2px 8px rgba(0,0,0,.5) !important;
+}
+
+/* ═══ Neural Horse Tester — Cyberpunk / Tech-Noir Metalist ═══ */
+.art-neural-horse {
+  --art-hue: 280 !important;
+  position: relative;
+  isolation: isolate;
+}
+.art-neural-horse .nft-art-core,
+.art-neural-horse.artifact-hologram .nft-art-core {
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 35% 30%, hsla(280, 90%, 70%, 0.55), transparent 55%),
+    radial-gradient(circle at 70% 70%, hsla(220, 80%, 40%, 0.45), transparent 60%),
+    conic-gradient(from 0deg, hsla(280,100%,60%,0.0), hsla(280,100%,65%,0.35), hsla(210,90%,50%,0.0), hsla(280,100%,60%,0.3), hsla(280,100%,60%,0.0));
+  animation: neuralCorePulse 5s ease-in-out infinite;
+  z-index: 0;
+  pointer-events: none;
+}
+.art-neural-horse .nft-art-ico {
+  position: relative;
+  z-index: 2;
+  filter: drop-shadow(0 0 6px hsla(280, 100%, 70%, 0.9)) drop-shadow(0 0 14px hsla(260, 90%, 50%, 0.6));
+  animation: neuralHorseScan 5s ease-in-out infinite;
+}
+.art-neural-horse .nft-art-wave {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1.5px solid hsla(280, 90%, 70%, 0.55);
+  box-shadow: 0 0 12px hsla(280, 100%, 60%, 0.35);
+  animation: neuralHoloWave 15s ease-out infinite;
+  pointer-events: none;
+  z-index: 1;
+}
+.art-neural-horse.tg-gift-item {
+  background:
+    radial-gradient(circle at 30% 25%, hsla(280, 85%, 55%, 0.75), hsla(230, 70%, 28%, 0.95) 70%) !important;
+  border-color: hsla(280, 90%, 75%, 0.65) !important;
+  box-shadow:
+    0 0 16px hsla(280, 100%, 55%, 0.55),
+    0 0 28px hsla(260, 80%, 40%, 0.35),
+    inset 0 0 12px hsla(280, 100%, 80%, 0.2) !important;
+  animation: tgGiftPop 0.55s cubic-bezier(.2,1.2,.4,1) forwards, neuralGlow 4s ease-in-out infinite 0.6s;
+  animation-delay: calc(var(--gi,0) * 0.06s), calc(0.6s + var(--gi,0) * 0.06s);
+}
+.fifa-gift-chip.art-neural-horse {
+  background: linear-gradient(135deg, hsla(280, 70%, 25%, 0.9), hsla(230, 60%, 18%, 0.95)) !important;
+  border-color: hsla(280, 90%, 65%, 0.6) !important;
+  box-shadow: 0 0 14px hsla(280, 100%, 50%, 0.4);
+  color: #e8d5ff !important;
+}
+@keyframes neuralCorePulse {
+  0%, 100% { opacity: 0.7; transform: scale(1) rotate(0deg); }
+  50% { opacity: 1; transform: scale(1.08) rotate(18deg); }
+}
+@keyframes neuralHorseScan {
+  0%, 100% { transform: translateY(0) scale(1); }
+  40% { transform: translateY(-1px) scale(1.06); }
+  70% { transform: translateY(1px) scale(0.98); }
+}
+@keyframes neuralHoloWave {
+  0% { transform: scale(0.85); opacity: 0; }
+  8% { opacity: 0.7; }
+  22% { transform: scale(1.55); opacity: 0; }
+  100% { transform: scale(1.55); opacity: 0; }
+}
+@keyframes neuralGlow {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.25); }
+}
+
+/* Manifest reveal when awarded / inspect modal */
+.artifact-inspect.neural-inspect {
+  text-align: center;
+  padding: 8px 4px 16px;
+}
+.artifact-inspect-stage {
+  display: grid;
+  place-items: center;
+  min-height: 140px;
+  margin-bottom: 12px;
+}
+.artifact-hologram {
+  width: 96px; height: 96px;
+  border-radius: 50%;
+  display: grid; place-items: center;
+  position: relative;
+  background: radial-gradient(circle at 35% 30%, hsla(280, 80%, 45%, 0.5), hsla(220, 60%, 18%, 0.9));
+  border: 1px solid hsla(280, 90%, 70%, 0.45);
+  box-shadow: 0 0 32px hsla(280, 100%, 50%, 0.35);
+  animation: holoNoiseIn 0.9s ease-out both;
+}
+.artifact-hologram.art-neural-horse {
+  animation: holoNoiseIn 0.9s ease-out both, neuralGlow 4s ease-in-out infinite 1s;
+}
+@keyframes holoNoiseIn {
+  0% { opacity: 0; filter: contrast(2) brightness(2) blur(6px); transform: scale(0.6); }
+  40% { opacity: 0.7; filter: contrast(1.4) brightness(1.3) blur(2px); }
+  100% { opacity: 1; filter: none; transform: scale(1); }
+}
+.artifact-title { font-size: 17px; font-weight: 700; color: #e8d5ff; margin-top: 4px; }
+.artifact-rar { font-size: 12px; margin: 4px 0 8px; color: #c9a0ff; }
+.artifact-desc { font-size: 13px; line-height: 1.45; color: var(--muted, #aab); margin: 0 8px 8px; }
+.artifact-note, .artifact-hint {
+  font-size: 13px; font-style: italic; color: #d4b8ff;
+  margin: 8px 12px 0; padding: 8px 12px;
+  border-left: 3px solid hsla(280, 80%, 60%, 0.7);
+  background: hsla(280, 40%, 20%, 0.35); border-radius: 0 8px 8px 0;
+  text-align: left;
+}
+.gift-award-btn[data-gift-id="neural_horse_tester"],
+.gift-award-btn.rarity-legendary[data-gift-id="neural_horse_tester"] {
+  border-color: hsla(280, 90%, 65%, 0.7) !important;
+  box-shadow: 0 0 12px hsla(280, 100%, 50%, 0.35);
+  background: linear-gradient(145deg, hsla(280, 50%, 22%, 0.95), hsla(230, 50%, 14%, 0.95)) !important;
+}
+
+
+
+/* ═══ GIFTS FINAL v2 — always visible, Telegram scatter around avatar ═══ */
+.cp-avatar-wrap {
+  position: relative !important;
+  width: min(260px, 88vw) !important;
+  height: 200px !important;
+  margin: 8px auto 16px !important;
+  display: grid !important;
+  place-items: center !important;
+  overflow: visible !important;
+  z-index: 8 !important;
+}
+.cp-avatar-wrap .cp-avatar {
+  width: 96px !important;
+  height: 96px !important;
+  margin: 0 !important;
+  z-index: 4 !important;
+  position: relative !important;
+  border-radius: 50% !important;
+  overflow: hidden !important;
+}
+/* ONLY profile/cards — NOT .main (scroll must work) */
+.cp-hero,
+.cp-hero.cp-person,
+.cp-hero.cp-person.cp-clean,
+.cp-clean {
+  overflow: visible !important;
+}
+.pl-card {
+  overflow: visible !important;
+}
+.pl-cards {
+  overflow: visible !important;
+  /* allow vertical scroll of parent .main */
+}
+.club-profile {
+  overflow: visible !important;
+}
+/* Restore app scroll containers */
+.app > .main,
+.main,
+#main {
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+#view,
+.view,
+.view-body {
+  overflow: visible !important; /* content can paint gifts; parent .main scrolls */
+}
+
+.pl-card-av-wrap {
+  position: relative !important;
+  width: 100px !important;
+  height: 100px !important;
+  margin: 0 auto 12px !important;
+  overflow: visible !important;
+  z-index: 5 !important;
+}
+.pl-card-av-wrap .pl-card-av {
+  width: 64px !important;
+  height: 64px !important;
+  margin: 0 !important;
+  z-index: 3 !important;
+  position: relative !important;
+  border-radius: 50% !important;
+  overflow: hidden !important;
+}
+
+.tg-gift-cloud,
+.tg-gift-cloud.tg-gift-expand,
+.tg-gift-cloud.mode-full,
+.tg-gift-cloud.mode-mini3,
+.tg-gift-cloud.mode-right3 {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  pointer-events: none !important;
+  z-index: 9 !important;
+  overflow: visible !important;
+  display: block !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+/* CRITICAL: no opacity:0 — gifts must always render */
+.tg-gift-item,
+.tg-gift-item.nft-art,
+.tg-gift-cloud .tg-gift-item {
+  position: absolute !important;
+  left: 50% !important;
+  top: 50% !important;
+  width: 38px !important;
+  height: 38px !important;
+  margin: -19px 0 0 -19px !important;
+  border-radius: 12px !important;
+  display: grid !important;
+  place-items: center !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  cursor: pointer !important;
+  z-index: 10 !important;
+  /* position via variables — always on screen */
+  transform: translate(var(--gx, 40px), var(--gy, -40px)) scale(1) !important;
+  background:
+    radial-gradient(circle at 30% 25%, hsla(var(--art-hue, 42), 90%, 70%, 0.6), transparent 55%),
+    linear-gradient(145deg, hsla(var(--art-hue, 42), 75%, 32%, 0.98), rgba(10, 12, 18, 0.96)) !important;
+  border: 2px solid hsla(var(--art-hue, 42), 85%, 58%, 0.85) !important;
+  box-shadow:
+    0 4px 16px rgba(0,0,0,0.5),
+    0 0 16px hsla(var(--art-hue, 42), 90%, 50%, 0.35) !important;
+  animation: tgGiftFloatOnly 3.5s ease-in-out infinite !important;
+  animation-delay: calc(var(--gi, 0) * 0.28s) !important;
+}
+.tg-gift-item .nft-art-ico,
+.tg-gift-item .nft-art-core,
+.tg-gift-item .nft-art-wave {
+  position: relative;
+  z-index: 1;
+  pointer-events: none;
+}
+.tg-gift-item .nft-art-ico { font-size: 18px !important; line-height: 1 !important; }
+
+@keyframes tgGiftFloatOnly {
+  0%, 100% { transform: translate(var(--gx), var(--gy)) translateY(0) scale(1); }
+  50%      { transform: translate(var(--gx), calc(var(--gy) - 5px)) scale(1.06); }
+}
+
+/* Home — larger ornaments */
+.mode-full .tg-gift-item,
+.mode-full .tg-gift-item.nft-art {
+  width: 44px !important;
+  height: 44px !important;
+  margin: -22px 0 0 -22px !important;
+}
+.mode-full .tg-gift-item .nft-art-ico { font-size: 20px !important; }
+
+/* Squad max 3 — compact */
+.mode-mini3 .tg-gift-item,
+.mode-mini3 .tg-gift-item.nft-art {
+  width: 26px !important;
+  height: 26px !important;
+  margin: -13px 0 0 -13px !important;
+}
+.mode-mini3 .tg-gift-item .nft-art-ico { font-size: 13px !important; }
+
+.mode-right3 .tg-gift-item,
+.mode-right3 .tg-gift-item.nft-art {
+  width: 34px !important;
+  height: 34px !important;
+  margin: -17px 0 0 -17px !important;
+}
+
+/* Fallback if CSS vars missing — still show something */
+.tg-gift-item:nth-child(1) { --gx: -88px; --gy: -36px; }
+.tg-gift-item:nth-child(2) { --gx: 92px; --gy: -32px; }
+.tg-gift-item:nth-child(3) { --gx: -84px; --gy: 44px; }
+.tg-gift-item:nth-child(4) { --gx: 88px; --gy: 48px; }
+.tg-gift-item:nth-child(5) { --gx: -30px; --gy: -86px; }
+.tg-gift-item:nth-child(6) { --gx: 36px; --gy: -88px; }
+.tg-gift-item:nth-child(7) { --gx: -102px; --gy: 6px; }
+.tg-gift-item:nth-child(8) { --gx: 106px; --gy: 10px; }
+
+
+/* Coach in squad */
+.pl-card.coach-squad-card {
+  border: 1px solid rgba(240, 193, 75, 0.45) !important;
+  background: linear-gradient(160deg, rgba(61, 46, 10, 0.55), rgba(20, 18, 12, 0.9)) !important;
+}
+.pl-card.coach-squad-card .pl-card-name { color: #f0c14b !important; }
+.coach-mini-stats {
+  display: flex; flex-wrap: wrap; gap: 6px 10px;
+  margin-top: 6px; font-size: 11px; color: rgba(255,255,255,0.75);
+}
+.coach-av { box-shadow: 0 0 0 2px rgba(240,193,75,0.5) !important; }
+
+.artifact-coach-actions {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  margin-top: 14px; padding-top: 12px;
+  border-top: 1px solid rgba(255,255,255,0.1);
+}
+.artifact-coach-actions .btn-danger {
+  color: #ff6b6b !important;
+  border-color: rgba(255,107,107,0.4) !important;
+}
+.coach-stats-strip {
+  display: grid !important;
+  grid-template-columns: repeat(3, 1fr) !important;
+  gap: 8px !important;
+}
+@media (min-width: 600px) {
+  .coach-stats-strip { grid-template-columns: repeat(6, 1fr) !important; }
+}
+
+
+/* Reliable gift strip under profile avatar */
+.tg-gift-strip {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  margin: 4px auto 12px !important;
+  max-width: 100% !important;
+  padding: 0 8px !important;
+  position: relative !important;
+  z-index: 6 !important;
+}
+.tg-gift-strip-item {
+  width: 40px !important;
+  height: 40px !important;
+  border-radius: 12px !important;
+  border: 1.5px solid hsla(var(--art-hue, 42), 80%, 55%, 0.7) !important;
+  background:
+    radial-gradient(circle at 30% 25%, hsla(var(--art-hue, 42), 90%, 65%, 0.45), transparent 55%),
+    linear-gradient(145deg, hsla(var(--art-hue, 42), 70%, 28%, 0.95), rgba(12,14,20,0.95)) !important;
+  display: grid !important;
+  place-items: center !important;
+  font-size: 18px !important;
+  cursor: pointer !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.35) !important;
+  flex-shrink: 0 !important;
+}
+.tg-gift-more {
+  align-self: center;
+  font-size: 12px;
+  color: var(--muted, #9aa);
+  padding: 0 4px;
+}
+
+
+/* ═══ AUDIT FIX: scroll must never die outside board ═══ */
+html, body {
+  height: 100% !important;
+  overflow: hidden !important; /* app shell */
+}
+.app > .main,
+.main,
+#main {
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior-y: contain !important;
+}
+body.mode-board-focus .main,
+body.board-active .main,
+body.board-on .main {
+  overflow: hidden !important; /* only on board */
+}
+
+
+/* ═══ Golden Ball Founder — Legendary Gold ═══ */
+.art-golden-ball,
+.tg-gift-item.art-golden-ball,
+.artifact-hologram.art-golden-ball {
+  --art-hue: 42 !important;
+  position: relative;
+  isolation: isolate;
+}
+.art-golden-ball {
+  box-shadow:
+    0 0 20px rgba(240, 193, 75, 0.55),
+    0 0 40px rgba(255, 200, 60, 0.25),
+    0 4px 16px rgba(0,0,0,0.45) !important;
+  border-color: rgba(255, 215, 80, 0.9) !important;
+  background:
+    radial-gradient(circle at 30% 25%, rgba(255, 230, 140, 0.65), transparent 50%),
+    linear-gradient(145deg, #c9a227, #5c4010) !important;
+  animation: goldenBallPulse 2.8s ease-in-out infinite !important;
+}
+@keyframes goldenBallPulse {
+  0%, 100% { box-shadow: 0 0 16px rgba(240,193,75,0.4), 0 4px 12px rgba(0,0,0,0.4); }
+  50% { box-shadow: 0 0 28px rgba(255,220,100,0.75), 0 0 48px rgba(240,193,75,0.35), 0 4px 16px rgba(0,0,0,0.45); }
+}
+.artifact-hologram.art-golden-ball .nft-art-ico {
+  filter: drop-shadow(0 0 8px rgba(255, 215, 80, 0.8));
+}
+
+
+/* ═══ Telegram-style animated emoji artifacts ═══ */
+.tg-emoji-anim,
+.nft-art-ico.tg-emoji-anim {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  line-height: 1;
+  transform-origin: center center;
+  will-change: transform, filter;
+}
+.tg-emoji-media {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  border-radius: 6px;
+  pointer-events: none;
+}
+.tg-gift-item.nft-art .tg-emoji-media { width: 20px; height: 20px; }
+
+/* base float already exists — layer emoji-specific loops */
+.anim-float .tg-emoji-anim { animation: tgEmojiFloat 2.8s ease-in-out infinite; }
+.anim-bounce .tg-emoji-anim { animation: tgEmojiBounce 1.1s ease-in-out infinite; }
+.anim-spin .tg-emoji-anim { animation: tgEmojiSpin 2.4s linear infinite; }
+.anim-pulse .tg-emoji-anim { animation: tgEmojiPulse 1.6s ease-in-out infinite; }
+.anim-sparkle .tg-emoji-anim { animation: tgEmojiSparkle 2s ease-in-out infinite; }
+.anim-wiggle .tg-emoji-anim { animation: tgEmojiWiggle 1.4s ease-in-out infinite; }
+.anim-heartbeat .tg-emoji-anim { animation: tgEmojiHeart 1.05s ease-in-out infinite; }
+.anim-flash .tg-emoji-anim { animation: tgEmojiFlash 1.8s ease-in-out infinite; }
+.anim-sway .tg-emoji-anim { animation: tgEmojiSway 2.2s ease-in-out infinite; }
+.anim-launch .tg-emoji-anim { animation: tgEmojiLaunch 1.8s ease-in-out infinite; }
+.anim-roar .tg-emoji-anim { animation: tgEmojiRoar 1.5s ease-in-out infinite; }
+.anim-neural .tg-emoji-anim { animation: tgEmojiNeural 2.5s ease-in-out infinite; }
+.anim-golden .tg-emoji-anim { animation: tgEmojiGolden 2.2s ease-in-out infinite; }
+
+@keyframes tgEmojiFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+@keyframes tgEmojiBounce {
+  0%, 100% { transform: translateY(0) scale(1); }
+  40% { transform: translateY(-5px) scale(1.08); }
+  60% { transform: translateY(-2px) scale(0.98); }
+}
+@keyframes tgEmojiSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes tgEmojiPulse {
+  0%, 100% { transform: scale(1); filter: brightness(1); }
+  50% { transform: scale(1.12); filter: brightness(1.25); }
+}
+@keyframes tgEmojiSparkle {
+  0%, 100% { transform: scale(1) rotate(0deg); filter: brightness(1) drop-shadow(0 0 0 transparent); }
+  25% { transform: scale(1.08) rotate(-6deg); filter: brightness(1.2) drop-shadow(0 0 4px rgba(255,220,120,0.7)); }
+  50% { transform: scale(1.02) rotate(4deg); filter: brightness(1.35) drop-shadow(0 0 8px rgba(255,230,150,0.9)); }
+  75% { transform: scale(1.1) rotate(-3deg); filter: brightness(1.15) drop-shadow(0 0 4px rgba(255,220,120,0.6)); }
+}
+@keyframes tgEmojiWiggle {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-10deg); }
+  75% { transform: rotate(10deg); }
+}
+@keyframes tgEmojiHeart {
+  0%, 100% { transform: scale(1); }
+  15% { transform: scale(1.18); }
+  30% { transform: scale(1); }
+  45% { transform: scale(1.12); }
+  60% { transform: scale(1); }
+}
+@keyframes tgEmojiFlash {
+  0%, 100% { filter: brightness(1); transform: scale(1); }
+  40% { filter: brightness(1.5); transform: scale(1.08); }
+  55% { filter: brightness(0.95); transform: scale(0.98); }
+}
+@keyframes tgEmojiSway {
+  0%, 100% { transform: translateX(0) rotate(0deg); }
+  50% { transform: translateX(2px) rotate(6deg); }
+}
+@keyframes tgEmojiLaunch {
+  0%, 100% { transform: translateY(0) scale(1); }
+  40% { transform: translateY(-7px) scale(1.05); }
+  55% { transform: translateY(-3px) scale(0.96); }
+}
+@keyframes tgEmojiRoar {
+  0%, 100% { transform: scale(1); filter: saturate(1); }
+  30% { transform: scale(1.15); filter: saturate(1.3); }
+  50% { transform: scale(1.05); }
+}
+@keyframes tgEmojiNeural {
+  0%, 100% { filter: hue-rotate(0deg) brightness(1); transform: scale(1); }
+  50% { filter: hue-rotate(25deg) brightness(1.25); transform: scale(1.08); }
+}
+@keyframes tgEmojiGolden {
+  0%, 100% { filter: brightness(1) drop-shadow(0 0 2px rgba(240,193,75,0.4)); transform: scale(1) rotate(0deg); }
+  50% { filter: brightness(1.3) drop-shadow(0 0 10px rgba(255,215,80,0.85)); transform: scale(1.1) rotate(-4deg); }
+}
+
+/* slightly larger emoji on home full cloud */
+.tg-gift-cloud.mode-full .nft-art-ico { font-size: 20px; }
+.tg-gift-cloud.mode-full .tg-gift-item.nft-art {
+  width: 40px !important;
+  height: 40px !important;
+  margin: -20px 0 0 -20px !important;
+}
+
+/* ═══ METALIST HOLO EMBLEM · exclusive club artifact ═══ */
+.ms-holo-artifact { display:inline-grid; place-items:center; width:100%; height:100%; position:relative; isolation:isolate; }
+.ms-holo-svg { width:100%; height:100%; overflow:visible; display:block; }
+.ms-holo-orbit { fill:none; stroke:#6cf8ff; stroke-width:.7; stroke-dasharray:3 5; opacity:.72; transform-origin:50% 50%; animation:msHoloOrbit 13s linear infinite; }
+.ms-holo-orbit-b { stroke:#c5a3ff; stroke-dasharray:1 7; animation-direction:reverse; animation-duration:17s; }
+.ms-holo-letters { font:900 21px/1 system-ui,sans-serif; letter-spacing:-1.5px; fill:#e9ffff; filter:drop-shadow(0 0 3px #58f7ff); }
+.ms-holo-micro { font:700 5.2px/1 system-ui,sans-serif; letter-spacing:1px; fill:#9ffcff; }
+.ms-holo-scanline { stroke:#8dfaff; stroke-width:.65; opacity:.24; }
+.ms-holo-glint { stroke:#fff; stroke-width:1.3; stroke-dasharray:12 54; opacity:.85; animation:msHoloGlint 4.5s ease-in-out infinite; }
+.ms-holo-node { fill:#d9ffff; filter:drop-shadow(0 0 4px #45f6ff); animation:msHoloNode 2.8s ease-in-out infinite alternate; }
+.ms-holo-node:last-child { animation-delay:1.2s; }
+.tg-gift-item.art-metalist-holo-emblem { background:radial-gradient(circle at 32% 24%,#2c6675,#08151f 72%) !important; border:1px solid rgba(125,250,255,.9) !important; box-shadow:0 0 10px #36e9ff99, inset 0 0 9px #b7ffff44 !important; }
+.tg-gift-item.art-metalist-holo-emblem .nft-art-core { display:none; }
+.tg-gift-item.art-metalist-holo-emblem .nft-art-ico { display:grid; place-items:center; width:100%; height:100%; padding:3px; filter:drop-shadow(0 0 5px #53f3ff99); }
+.tg-gift-item.art-metalist-holo-emblem .ms-holo-artifact { animation:msHoloHover 3.8s ease-in-out infinite; }
+.tg-gift-strip-item.art-metalist-holo-emblem { border-color:#76f7ff !important; box-shadow:0 0 12px #45edff66; }
+.artifact-hologram.art-metalist-holo-emblem { width:112px; height:112px; border-radius:18px; padding:7px; background:radial-gradient(circle,#123342,#07111a 72%); border-color:#6cf8ff; box-shadow:0 0 28px #2eeeff55,inset 0 0 18px #7cfaff22; }
+.artifact-hologram.art-metalist-holo-emblem .nft-art-ico { display:none; }
+.ms-holo-inspect { width:min(260px,72vw); margin:auto; text-align:center; padding:12px; border-radius:22px; border:1px solid #6cf8ff55; background:radial-gradient(ellipse at 50% 35%,#123b4b 0%,#08131e 68%); box-shadow:0 0 42px #38e9ff22,inset 0 0 24px #76f8ff0d; }
+.ms-holo-inspect .ms-holo-svg { height:190px; }
+.ms-holo-inspect-caption { font:800 14px/1.2 system-ui,sans-serif; letter-spacing:2px; color:#e7ffff; }
+.ms-holo-inspect-caption span { color:#79f6ff; }
+.ms-holo-serial { margin-top:7px; font:600 9px/1.4 ui-monospace,monospace; letter-spacing:2px; color:#77bfc9; }
+@keyframes msHoloOrbit { to { transform:rotate(360deg); } }
+@keyframes msHoloGlint { 0%,18% { transform:translateX(-18px); opacity:0; } 35% { opacity:.9; } 65%,100% { transform:translateX(18px); opacity:0; } }
+@keyframes msHoloNode { from { opacity:.45; transform:scale(.8); } to { opacity:1; transform:scale(1.2); } }
+@keyframes msHoloHover { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-1.5px); } }
+@media (prefers-reduced-motion:reduce) { .ms-holo-orbit,.ms-holo-glint,.ms-holo-node,.tg-gift-item.art-metalist-holo-emblem .ms-holo-artifact { animation:none !important; } }
+
+/* Crest-faithful holographic edition: gold/navy shield, football, rearing horse and 2025. */
+.ms-holo-name { font:900 4.05px/1 system-ui,sans-serif; letter-spacing:.22px; fill:#071321; }
+.ms-holo-year { font:900 10.5px/1 system-ui,sans-serif; letter-spacing:.35px; fill:#f5d56d; stroke:#071321; stroke-width:.18px; paint-order:stroke; filter:drop-shadow(0 0 2px #75f8ff); }
+.ms-holo-horse { filter:drop-shadow(0 0 1.8px #70faff); }
+.ms-holo-glint-low { animation-delay:1.8s; animation-duration:5.2s; }
+.ms-holo-inspect-stage { width:min(300px,72vw); height:310px; margin:0 auto 8px; display:grid; place-items:center; background:radial-gradient(ellipse at 50% 45%,#263b55 0%,#09121f 67%); border-radius:18px; overflow:hidden; }
+.ms-holo-inspect-stage .ms-holo-svg { width:100%; height:100%; padding:8px; }
+.tg-gift-item.art-metalist-holo-emblem { background:radial-gradient(circle at 35% 20%,#6b5525,#0b1727 72%) !important; border-color:#e9c45a !important; box-shadow:0 0 10px #63f5ff88,inset 0 0 9px #ffe89a44 !important; }
+.tg-gift-strip-item.art-metalist-holo-emblem { border-color:#e8c65c !important; box-shadow:0 0 12px #55edff66,0 0 5px #eac95b55; }
+.artifact-hologram.art-metalist-holo-emblem { background:radial-gradient(circle,#4d4020,#081525 72%); border-color:#e5c45a; box-shadow:0 0 28px #2eeeff55,0 0 15px #e8c45b44,inset 0 0 18px #7cfaff22; }

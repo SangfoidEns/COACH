@@ -413,11 +413,52 @@ const BoardEngine = {
   /** Вихід з режиму дошки (CSS). Native fullscreen додатку НЕ чіпаємо. */
   leaveBoardMode() {
     this.isBoardOnly = false;
+    this.closeToolsTray(true);
     document.body.classList.remove(
       'board-fs-nav', 'board-only-mode', 'mode-board-focus',
-      'board-workspace', 'present-mode', 'bw-props', 'bw-tools-collapsed', 'bw-nav-hide'
+      'board-workspace', 'present-mode', 'bw-props', 'bw-tools-collapsed', 'bw-nav-hide',
+      'tools-tray-open', 'bench-collapsed'
     );
     // document.fullscreenElement і Telegram fullscreen лишаються як були
+  },
+
+  /** Закрити лоток інструментів (і прибрати portal з body) */
+  closeToolsTray(skipRender) {
+    try {
+      const ab = Store.get() && Store.get().activeBoard;
+      if (ab) {
+        ab.toolsTrayOpen = false;
+        ab.paletteOpen = false;
+      }
+      document.body.classList.remove('tools-tray-open');
+      const tray = document.getElementById('btbToolsTray');
+      if (tray) {
+        tray.classList.remove('open');
+        tray.setAttribute('aria-hidden', 'true');
+        // повернути в bottom toolbar якщо був portal
+        const bottom = document.getElementById('boardToolbarBottom');
+        if (bottom && tray.parentElement === document.body) {
+          bottom.appendChild(tray);
+        }
+      }
+      if (!skipRender) {
+        try { this.renderToolbar && this.renderToolbar(); } catch (_) {}
+      }
+    } catch (_) {}
+  },
+
+  toggleBenchCollapsed() {
+    const collapsed = document.body.classList.toggle('bench-collapsed');
+    try {
+      const ab = Store.get().activeBoard;
+      if (ab) ab.benchCollapsed = collapsed;
+    } catch (_) {}
+    try {
+      this._sizeStageToPitch && this._sizeStageToPitch();
+      this.applyCamera && this.applyCamera();
+      this.renderTokens && this.renderTokens();
+    } catch (_) {}
+    return collapsed;
   },
 
 
@@ -451,7 +492,22 @@ const BoardEngine = {
 
   /* ── POINTER DOWN ── */
   onPointerDown(e) {
-    // Ignore secondary buttons except middle for pan
+    // Будь-яка робота на полі ховає лоток інструментів
+    try {
+      const ab = Store.get() && Store.get().activeBoard;
+      if (ab && ab.toolsTrayOpen) {
+        this.closeToolsTray(true);
+        // оновити іконку ⊕ без повного rebuild якщо можливо
+        const more = document.querySelector('#boardToolbarBottom .tb-more');
+        if (more) {
+          more.classList.remove('on');
+          more.setAttribute('aria-expanded', 'false');
+          const ic = more.querySelector('.tb-more-icon');
+          if (ic) ic.textContent = '⊕';
+        }
+      }
+    } catch (_) {}
+// Ignore secondary buttons except middle for pan
     if (e.button === 2) return;
     e.preventDefault();
 
@@ -482,9 +538,6 @@ const BoardEngine = {
     const s = Store.get();
     const tool = s.activeBoard.tool;
     const target = e.target.closest('.pt, .ball, .eq');
-
-    // Players/guests can inspect and pan the board, but cannot move or create objects.
-    if (typeof AuthManager !== 'undefined' && !AuthManager.isCoach()) return;
 
     /* ── IMMEDIATE DRAG: touch player → attach now ── */
     if (target && (tool === 'select' || tool === 'player' || tool === 'opponent' || !tool)) {
@@ -964,16 +1017,20 @@ const BoardEngine = {
     const list = available.map(p => {
       const r = p.readiness != null ? p.readiness : (p.condition != null ? p.condition : 80);
       const st = p.status === 'injured' ? ' 🩹' : (p.status === 'available' ? '' : ' · ' + p.status);
+      const grp = p.group === 'reserve' ? ' · Резерв' : '';
       return `<button type="button" class="btn btn-s roster-pick" style="width:100%;margin:4px 0;text-align:left;min-height:44px"
         data-pick-player="${p.id}">
-        <strong>#${p.number}</strong> ${sanitize(p.firstName)} ${sanitize(p.lastName)}${st}
+        <strong>#${p.number}</strong> ${sanitize(p.firstName)} ${sanitize(p.lastName)}${st}${grp}
         <span style="float:right;color:var(--muted);font-size:12px">${sanitize(p.position)} · ${r}%</span>
       </button>`;
     }).join('');
     Modal.open(
       'Склад МЕТАЛІСТ ШТУТГАРТ',
-      `<p class="note-sm" style="margin-bottom:8px">Оберіть гравця для фішки на дошці</p>
-       <div style="max-height:50vh;overflow:auto">${list}</div>`,
+      `<p class="note-sm" style="margin-bottom:8px">Оберіть гравця на поле · або відправте всіх вільних на лавку</p>
+       <button type="button" class="btn btn-p" id="rosterAllToBenchBtn" style="width:100%;margin-bottom:10px;min-height:44px">
+         ⬇ Усіх зі списку на лавку (${available.length})
+       </button>
+       <div style="max-height:45vh;overflow:auto">${list}</div>`,
       [{ label: 'Скасувати', cls: 'btn-s', action: 'cancel' }]
     );
     const self = this;
@@ -984,7 +1041,59 @@ const BoardEngine = {
           Modal.close();
         });
       });
+      const allBtn = document.getElementById('rosterAllToBenchBtn');
+      if (allBtn) {
+        allBtn.addEventListener('click', (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          const n = self.sendAvailableToBench();
+          Modal.close();
+          if (n > 0) Toast.show(n + ' гравців на лавці', 'ok');
+          else Toast.show('Немає вільних гравців', 'warn');
+        });
+      }
     }, 30);
+  },
+
+  /** Лише ті, кого ще немає на полі / на лавці — додати на лавку */
+  sendAvailableToBench() {
+    const s = Store.get();
+    if (!s.activeBoard) return 0;
+    if (!Array.isArray(s.activeBoard.objects)) s.activeBoard.objects = [];
+    const used = new Set(
+      (s.activeBoard.objects || [])
+        .filter(o => o.type === 'player' && o.playerId)
+        .map(o => o.playerId)
+    );
+    const available = (s.players || []).filter(p => !used.has(p.id));
+    if (!available.length) return 0;
+    const chipColor = s.activeBoard.drawColor || null;
+    available.forEach((roster) => {
+      const isGk = String(roster.position || '').toUpperCase() === 'GK';
+      const col = isGk ? this.GK_CHIP_COLOR : (chipColor || undefined);
+      s.activeBoard.objects.push({
+        id: uid(), type: 'player', x: 0, y: 0,
+        number: roster.number,
+        label: roster.lastName || '',
+        team: 'own',
+        playerId: roster.id,
+        readiness: roster.readiness != null ? roster.readiness : (roster.condition != null ? roster.condition : 80),
+        load: roster.load != null ? roster.load : 0,
+        position: roster.position || null,
+        status: roster.status || null,
+        isCaptain: !!roster.isCaptain,
+        chipColor: col,
+        color: col,
+        onBench: true,
+        rotation: 0, locked: false, visible: true
+      });
+    });
+    this.pushHistory();
+    try { StorageManager.save(); } catch (_) {}
+    this.render();
+    try { if (this.renderBenchPanel) this.renderBenchPanel(); } catch (_) {}
+    try { TelegramManager.haptic('medium'); } catch (_) {}
+    return available.length;
   },
 
   placeRosterPlayer(playerId, x, y) {
@@ -1601,7 +1710,6 @@ const BoardEngine = {
     if (!panel) return;
     // Delegation: старт drag з лавки
     panel.addEventListener('pointerdown', e => {
-      if (typeof AuthManager !== 'undefined' && !AuthManager.isCoach()) return;
       const chip = e.target.closest('.bench-chip');
       if (!chip || !chip.dataset.id) return;
       if (e.button === 2) return;
@@ -1623,10 +1731,6 @@ const BoardEngine = {
 
   /** Вибрати запасного: наступний тап по полю ставить його */
   armBenchPlace(objId) {
-    if (typeof AuthManager !== 'undefined' && !AuthManager.isCoach()) {
-      try { Toast.show('Лавка доступна лише тренеру для редагування', 'warn'); } catch (_) {}
-      return;
-    }
     this.pendingFromBenchId = objId;
     Store.get().activeBoard.selectedId = objId;
     Store.get().activeBoard.tool = 'select';
@@ -1636,7 +1740,6 @@ const BoardEngine = {
   },
 
   startBenchDrag(objId, e) {
-    if (typeof AuthManager !== 'undefined' && !AuthManager.isCoach()) return;
     const s = Store.get();
     const obj = (s.activeBoard.objects || []).find(o => o.id === objId && o.onBench);
     if (!obj) return;
@@ -1826,6 +1929,10 @@ const BoardEngine = {
       });
     } catch (_) {}
     this.renderBenchPanel();
+    try {
+      const av = !!(Store.get().activeBoard && Store.get().activeBoard.useAvatars);
+      document.body.classList.toggle('board-avatars', av);
+    } catch (_) {}
     const layer = document.getElementById('playersLayer');
     if (!layer) return;
     const s = Store.get();
@@ -2006,19 +2113,46 @@ const BoardEngine = {
       const loadCol = loadNum != null && !isNaN(loadNum)
         ? (loadPct >= 0.7 ? '#e74c3c' : loadPct >= 0.4 ? '#f1c40f' : '#3498db')
         : ringColor;
-      const circ = 2 * Math.PI * 15;
+      // Ring geometry in viewBox 0..40 — scales with CSS size; track full circle, arc = readiness/load
+      const R = 17; // slightly larger so ring sits outside avatar face
+      const circ = 2 * Math.PI * R;
+      const dash = Math.max(0.01, loadPct) * circ;
+      const gap = circ - dash;
       const ringSvg =
         `<svg class="pt-load-ring" viewBox="0 0 40 40" aria-hidden="true">` +
-        `<circle cx="20" cy="20" r="15" fill="none" stroke="rgba(0,0,0,0.35)" stroke-width="3.5"/>` +
-        `<circle cx="20" cy="20" r="15" fill="none" stroke="${loadCol}" stroke-width="3.5" stroke-dasharray="${loadPct * circ} ${circ}" stroke-linecap="round" transform="rotate(-90 20 20)"/></svg>`;
+        `<circle cx="20" cy="20" r="${R}" fill="none" stroke="rgba(255,255,255,0.22)" stroke-width="4"/>` +
+        `<circle cx="20" cy="20" r="${R}" fill="none" stroke="rgba(0,0,0,0.45)" stroke-width="4" opacity="0.5"/>` +
+        `<circle cx="20" cy="20" r="${R}" fill="none" stroke="${loadCol}" stroke-width="4" ` +
+        `stroke-dasharray="${dash.toFixed(2)} ${gap.toFixed(2)}" stroke-linecap="round" ` +
+        `transform="rotate(-90 20 20)"/></svg>`;
       let customBg = o.chipColor || o.fill || o.color || null;
       if (isGk) customBg = this.GK_CHIP_COLOR;
       const bgStyle = customBg ? `background:${customBg} !important;` : '';
       // Контейнер 40×40 як bench-avatar-wrap; позиція — центр у % поля
-      html += `<div class="${cls}${extraCls} pt-bench-style" data-id="${o.id}" data-r="14"${readyAttr} ` +
-        `style="left:${pct.left}%;top:${pct.top}%;${bgStyle ? '' : ''}" ` +
+      const useAv = !!(Store.get().activeBoard && Store.get().activeBoard.useAvatars);
+      let photoUrl = '';
+      if (useAv && o.playerId) {
+        try {
+          const pl = (Store.get().players || []).find(x => x.id === o.playerId);
+          if (pl) {
+            photoUrl = pl.photoUrl || pl.telegramPhotoUrl || '';
+            if (!photoUrl && typeof Views !== 'undefined' && Views._resolvePlayerAvatar) {
+              photoUrl = Views._resolvePlayerAvatar(pl) || '';
+            }
+          }
+        } catch (_) {}
+      }
+      if (useAv && !photoUrl && o.photoUrl) photoUrl = o.photoUrl;
+      const avCls = useAv ? ' pt-avatar-chip' : '';
+      // Always show number; photo when available
+      const avInner = (useAv && photoUrl)
+        ? `<img class="pt-photo" src="${sanitize(photoUrl)}" alt="" referrerpolicy="no-referrer" onerror="this.style.display='none'"/><span class="pt-num">${o.number || ''}</span>`
+        : `<span class="pt-num">${o.number || ''}</span>`;
+      // Avatar mode: larger hit radius for drag; ring drawn around photo via CSS 72px + SVG r=17
+      html += `<div class="${cls}${extraCls} pt-bench-style${avCls}" data-id="${o.id}" data-r="${useAv ? 36 : 14}"${readyAttr} ` +
+        `style="left:${pct.left}%;top:${pct.top}%" ` +
         `title="${sanitize(titleName + titleExtra)}">` +
-        `<div class="pt-wrap">${ringSvg}<div class="pt-avatar" style="${bgStyle}"><span class="pt-num">${o.number || ''}</span></div></div>` +
+        `<div class="pt-wrap">${ringSvg}<div class="pt-avatar" style="${useAv && photoUrl ? '' : bgStyle}">${avInner}</div></div>` +
         `${statusBadge}${label}</div>`;
     });
     layer.innerHTML = html;
@@ -2355,6 +2489,7 @@ const BoardEngine = {
           <button class="tb ${tool==='run'?'on':''}" data-tool="run" title="Рух">⇢</button>
           <button class="tb ${tool==='dribble'?'on':''}" data-tool="dribble" title="Ведення">∿</button>
           <button type="button" class="tb tb-palette-toggle" data-action="toggle-palette" title="Палітра">🎨</button>
+          <button type="button" class="tb tb-del" data-action="board-delete-selected" title="Видалити вибране">🗑</button>
           <button type="button" class="tb tb-more ${trayOpen?'on':''}" data-action="toggle-tools-tray" title="Більше інструментів" aria-expanded="${trayOpen?'true':'false'}">
             <span class="tb-more-icon">${trayOpen ? '✕' : '⊕'}</span>
           </button>
@@ -2408,16 +2543,32 @@ const BoardEngine = {
           <div class="btb-tray-sec">
             <div class="btb-tray-label">Поле та схема</div>
             <div class="btb-tray-row btb-tray-row-selects">
-              <select id="fieldViewSel" title="Вид поля">
-                <option value="full">Повне</option>
-                <option value="half">Половина</option>
-                <option value="attack">Атака</option>
-                <option value="defense">Захист</option>
-              </select>
-              <select id="schemeSel" title="Схема">
-                <option value="">Схема…</option>
-                ${Object.keys(typeof SCHEMES!=='undefined'?SCHEMES:{}).map(k => '<option value="'+k+'">'+k+'</option>').join('')}
-              </select>
+              <button type="button" class="btb-pick" id="fieldViewBtn" data-action="pick-field-view" title="Вид поля">
+                <span class="btb-pick-lb">Поле</span>
+                <span class="btb-pick-val" id="fieldViewVal">Повне</span>
+              </button>
+              <button type="button" class="btb-pick" id="schemePickBtn" data-action="pick-scheme" title="Тактична схема">
+                <span class="btb-pick-lb">Схема</span>
+                <span class="btb-pick-val" id="schemePickVal">Обрати…</span>
+              </button>
+            </div>
+            <!-- fallback native (hidden) for accessibility -->
+            <select id="fieldViewSel" class="sr-only-select" aria-hidden="true" tabindex="-1">
+              <option value="full">Повне</option>
+              <option value="half">Половина</option>
+              <option value="attack">Атака</option>
+              <option value="defense">Захист</option>
+            </select>
+            <select id="schemeSel" class="sr-only-select" aria-hidden="true" tabindex="-1">
+              <option value="">Схема…</option>
+              ${Object.keys(typeof SCHEMES!=='undefined'?SCHEMES:{}).map(k => '<option value="'+k+'">'+k+'</option>').join('')}
+            </select>
+          </div>
+          <div class="btb-tray-sec">
+            <div class="btb-tray-label">Склад на полі</div>
+            <div class="btb-tray-row">
+              <button type="button" class="tb ${(Store.get().activeBoard&&Store.get().activeBoard.useAvatars)?'on':''}" data-action="toggle-avatar-chips" title="Аватар-фішки (×2)">👤</button>
+              <button type="button" class="tb" data-action="rest-to-bench" title="Вільних зі складу на лавку">⬇ список→лавка</button>
             </div>
           </div>
           <div class="btb-tray-sec">
@@ -2439,19 +2590,32 @@ const BoardEngine = {
       top.innerHTML += '';
     }
 
+    const fvLabels = { full: 'Повне', half: 'Половина', attack: 'Атака', defense: 'Захист' };
     const fv = document.getElementById('fieldViewSel');
+    const curFv = (Store.get().activeBoard && Store.get().activeBoard.fieldView) || 'full';
     if (fv) {
-      fv.value = Store.get().activeBoard.fieldView || 'full';
+      fv.value = curFv;
       fv.onchange = () => {
         Store.get().activeBoard.fieldView = fv.value;
         BoardEngine.drawField(fv.value);
         BoardEngine.renderTokens();
         BoardEngine.renderDrawings();
         BoardEngine.fitField();
+        const lab = document.getElementById('fieldViewVal');
+        if (lab) lab.textContent = fvLabels[fv.value] || fv.value;
       };
     }
+    const fvLab = document.getElementById('fieldViewVal');
+    if (fvLab) fvLab.textContent = fvLabels[curFv] || curFv;
     const ss = document.getElementById('schemeSel');
-    if (ss) ss.onchange = () => { if (ss.value) BoardEngine.applyScheme(ss.value); };
+    if (ss) ss.onchange = () => {
+      if (ss.value) {
+        BoardEngine.applyScheme(ss.value);
+        const lab = document.getElementById('schemePickVal');
+        if (lab) lab.textContent = ss.value;
+        try { Toast.show('Схема: ' + ss.value, 'ok'); } catch (_) {}
+      }
+    };
     // Sync tray / palette body classes after every toolbar re-render
     try {
       document.body.classList.toggle('tools-tray-open', !!ab.toolsTrayOpen);

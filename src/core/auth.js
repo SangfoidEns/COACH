@@ -10,6 +10,7 @@ const AuthManager = {
   init() {
     try {
       this.user = this._readTelegramUser();
+      this.validationSource = 'unsafe';
       this._ensureRbacDefaults();
       this._resolveRole();
       this._applyUiRole();
@@ -21,6 +22,48 @@ const AuthManager = {
       this.role = 'coach';
     }
     return this;
+  },
+
+  /**
+   * Async: confirm identity via server HMAC validation of initData.
+   * Call after TelegramManager.init(). Safe to call when API is not configured (keeps unsafe mode).
+   */
+  async validateWithServer() {
+    try {
+      if (typeof TelegramManager === 'undefined' || !TelegramManager.validateSession) {
+        this.validationSource = 'local';
+        return { ok: true, source: 'local' };
+      }
+      const res = await TelegramManager.validateSession();
+      this.validationSource = res.source || 'error';
+      if (res.ok && res.user && res.source === 'server') {
+        this.user = {
+          id: res.user.id,
+          username: res.user.username || '',
+          first_name: res.user.first_name || '',
+          last_name: res.user.last_name || '',
+          language_code: res.user.language_code || '',
+          is_premium: !!res.user.is_premium,
+          photo_url: res.user.photo_url || ''
+        };
+        this._resolveRole();
+        this._applyUiRole();
+        console.info('[Auth] server-validated', this.role, this.user.id, this.user.username || '');
+      } else if (!res.ok && res.source === 'error' && res.error && res.error !== 'auth_api_not_configured') {
+        // Hard fail only when server is configured but rejected the signature
+        if (res.error === 'hash_mismatch' || res.error === 'auth_date_expired') {
+          this.user = null;
+          this.role = 'guest';
+          this.linkedPlayerId = null;
+          this._applyUiRole();
+          console.warn('[Auth] validation rejected — guest mode', res.error);
+        }
+      }
+      return res;
+    } catch (e) {
+      console.warn('[Auth] validateWithServer', e);
+      return { ok: false, source: 'error', error: String(e && e.message || e) };
+    }
   },
 
   _readTelegramUser() {
@@ -169,6 +212,23 @@ const AuthManager = {
     } catch (_) {
       return null;
     }
+  },
+
+  /** Чи цей запис гравця — поточний акаунт (підсвітка «я») */
+  isLinkedPlayer(p) {
+    if (!p) return false;
+    if (this.linkedPlayerId && p.id === this.linkedPlayerId) return true;
+    return this.matchesPlayer(p);
+  },
+  matchesPlayer(p) {
+    if (!p || !this.user) return false;
+    try {
+      if (p.telegramId && String(p.telegramId) === String(this.user.id)) return true;
+      const uname = this._normNick(this.user.username);
+      const pug = this._normNick(p.telegramUsername);
+      if (uname && pug && uname === pug) return true;
+    } catch (_) {}
+    return false;
   },
 
   can(action) {

@@ -20,6 +20,8 @@ const Store = (() => {
       calendar: [],
       matches: [],
       diary: [],
+      gifts: [],
+      moments: [],
       myExercises: [],
       animations: [],
       activeBoard: { objects: [], history: [], historyIdx: -1, selectedId: null, tool: 'select', fieldView: 'full', anim: { playing: false, frame: 0, paths: [], speed: 1 } },
