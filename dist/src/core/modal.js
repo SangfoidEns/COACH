@@ -20,9 +20,9 @@ const Modal = {
   },
   confirm(msg, onYes) {
     this._onConfirm = onYes;
-    this.open('Підтвердження', `<p style="font-size:14px">${sanitize(msg)}</p>`, [
-      { label: 'Скасувати', cls: 'btn-s', action: 'cancel' },
-      { label: 'Підтвердити', cls: 'btn-d', action: 'confirm' }
+    this.open((typeof t==='function'?t('confirm_title'):'Підтвердження'), `<p style="font-size:14px">${sanitize(msg)}</p>`, [
+      { label: (typeof t==='function'?t('cancel'):'Скасувати'), cls: 'btn-s', action: 'cancel' },
+      { label: (typeof t==='function'?t('confirm_ok'):'Підтвердити'), cls: 'btn-d', action: 'confirm' }
     ]);
   },
   prompt(title, def, onOk) {
@@ -31,7 +31,7 @@ const Modal = {
       onOk(v);
     };
     this.open(title, `<div class="fgr full"><input id="promptInput" value="${sanitize(def || '')}"></div>`, [
-      { label: 'Скасувати', cls: 'btn-s', action: 'cancel' },
+      { label: (typeof t==='function'?t('cancel'):'Скасувати'), cls: 'btn-s', action: 'cancel' },
       { label: 'OK', cls: 'btn-p', action: 'confirm' }
     ]);
   }

@@ -9,7 +9,7 @@ const CoachTools = {
     const next = (s.trainings || [])
       .filter(t => t.status === 'planned' && t.date >= today)
       .sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || '')))[0];
-    if (!next) return 'Немає запланованих тренувань.';
+    if (!next) return (typeof t==='function'?t('no_planned'):'Немає запланованих тренувань.');
     const blocks = (next.structure || [])
       .map(b => '• ' + (b.title || b.name || 'Блок') + ' — ' + (b.duration || 0) + ' хв')
       .join('\n');
@@ -36,14 +36,14 @@ const CoachTools = {
     return (
       '👥 Склад у строю: ' + avail.length + '\n' +
       '🩹 Травма/відновлення: ' + inj.length + '\n\n' +
-      (lines || 'Немає гравців')
+      (lines || (typeof t==='function'?t('toast_no_players'):'Немає гравців'))
     );
   },
 
   async shareNextTraining() {
     const text = this.formatNextTrainingMessage();
     const ok = await TelegramManager.shareText('Тренування · МЕТАЛІСТ ШТУТГАРТ', text);
-    if (!ok && typeof Toast !== 'undefined') Toast.show('Не вдалося поділитися — скопіюйте з буфера', 'warn');
+    if (!ok && typeof Toast !== 'undefined') Toast.show(typeof t==='function'?t('toast_share_fail'):'Не вдалося поділитися — скопіюйте з буфера', 'warn');
     return ok;
   },
 
@@ -59,15 +59,66 @@ const CoachTools = {
       if (StorageManager.pushToCloud) {
         StorageManager.pushToCloud();
         try { TelegramManager.hapticSuccess(); } catch (_) {}
-        if (typeof Toast !== 'undefined') Toast.show('Синхронізація з Telegram Cloud…', 'ok');
+        if (typeof Toast !== 'undefined') Toast.show(typeof t==='function'?t('toast_sync'):'Синхронізація з Telegram Cloud…', 'ok');
         return true;
       }
     } catch (e) {
       console.warn('[CoachTools] sync', e);
       try { TelegramManager.hapticError(); } catch (_) {}
-      if (typeof Toast !== 'undefined') Toast.show('Помилка синхронізації', 'error');
+      if (typeof Toast !== 'undefined') Toast.show(typeof t==='function'?t('toast_sync_err'):'Помилка синхронізації', 'error');
     }
     return false;
+  },
+
+  async migrateRoster() {
+    try {
+      if (typeof StorageManager === 'undefined' || !StorageManager.migrateRegisteredPlayers) {
+        if (typeof Toast !== 'undefined') Toast.show('Міграція недоступна', 'warn');
+        return;
+      }
+      const res = await StorageManager.migrateRegisteredPlayers();
+      const msg = 'Міграція: ' + (res.linked || 0) + '/' + (res.total || 0) + ' з @ніком · збережено';
+      if (typeof Toast !== 'undefined') Toast.show(msg, 'ok');
+      if (!res.pack) return;
+      const text = JSON.stringify(res.pack, null, 2);
+      const blob = new Blob([text], { type: 'application/json' });
+      const file = new File([blob], 'metalist-full-migration.json', { type: 'application/json' });
+      // 1) Telegram / native share
+      try {
+        if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({ title: 'Metalist Roster', text: 'Склад МЕТАЛІСТ ШТУТГАРТ', files: [file] });
+          return;
+        }
+      } catch (_) {}
+      try {
+        if (navigator.share) {
+          await navigator.share({ title: 'Metalist Roster', text: text.slice(0, 3500) });
+        }
+      } catch (_) {}
+      // 2) Download fallback
+      try {
+        if (typeof StorageManager.downloadText === 'function') {
+          StorageManager.downloadText(text, 'metalist-full-migration.json');
+        } else {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'metalist-full-migration.json';
+          a.click();
+          setTimeout(() => URL.revokeObjectURL(url), 2000);
+        }
+      } catch (_) {}
+      // 3) Clipboard backup
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(text);
+          if (typeof Toast !== 'undefined') Toast.show('JSON також у буфері обміну', 'ok');
+        }
+      } catch (_) {}
+    } catch (e) {
+      console.warn('[migrateRoster]', e);
+      if (typeof Toast !== 'undefined') Toast.show('Помилка міграції', 'error');
+    }
   },
 
   async pullCloudNow() {
@@ -76,10 +127,10 @@ const CoachTools = {
       const data = await StorageManager.pullFromCloud();
       if (data) {
         try { TelegramManager.hapticSuccess(); } catch (_) {}
-        if (typeof Toast !== 'undefined') Toast.show('Дані з хмари завантажено', 'ok');
+        if (typeof Toast !== 'undefined') Toast.show(typeof t==='function'?t('toast_cloud_ok'):'Дані з хмари завантажено', 'ok');
         if (typeof App !== 'undefined' && App.renderCurrent) App.renderCurrent();
       } else if (typeof Toast !== 'undefined') {
-        Toast.show('У хмарі немає новіших даних', 'warn');
+        Toast.show(typeof t==='function'?t('toast_cloud_empty'):'У хмарі немає новіших даних', 'warn');
       }
       return data;
     } catch (e) {
@@ -101,7 +152,7 @@ const CoachTools = {
         .sort((a, b) => a.date.localeCompare(b.date))[0];
     }
     if (!t) {
-      if (typeof Toast !== 'undefined') Toast.show('Немає тренування для відміток', 'warn');
+      if (typeof Toast !== 'undefined') Toast.show(typeof t==='function'?t('toast_no_training_att'):'Немає тренування для відміток', 'warn');
       return;
     }
     if (typeof Actions !== 'undefined' && Actions.openAttendance) {
@@ -119,7 +170,7 @@ const CoachTools = {
         document.querySelector('[data-action="timer-play"], [data-timer="play"]')?.click();
       }
       try { TelegramManager.haptic('medium'); } catch (_) {}
-      if (typeof Toast !== 'undefined') Toast.show('Сесію запущено', 'ok');
+      if (typeof Toast !== 'undefined') Toast.show(typeof t==='function'?t('toast_session_start'):'Сесію запущено', 'ok');
     } catch (e) {
       console.warn(e);
     }
@@ -149,8 +200,9 @@ const CoachTools = {
           <button type="button" class="btn btn-s coach-tool" data-coach-tool="share-training">📤 План тренування в чат</button>
           <button type="button" class="btn btn-s coach-tool" data-coach-tool="share-roster">👥 Склад у чат</button>
           <button type="button" class="btn btn-s coach-tool" data-coach-tool="timer">▶ Старт сесії</button>
-          <button type="button" class="btn btn-s coach-tool" data-coach-tool="sync-push">☁ Зберегти в Telegram Cloud</button>
+          <button type="button" class="btn btn-s coach-tool" data-coach-tool="sync-push">☁ ${typeof t==='function'?t('cloud_save_btn'):'Зберегти в Telegram Cloud'}</button>
           <button type="button" class="btn btn-s coach-tool" data-coach-tool="sync-pull">☁ Завантажити з Cloud</button>
+          <button type="button" class="btn btn-s coach-tool" data-coach-tool="migrate-roster">🔄 Міграція ВСІХ даних (Telegram)</button>
           <button type="button" class="btn btn-s coach-tool" data-coach-tool="export">📦 Експорт / Share JSON</button>
           <button type="button" class="btn btn-s coach-tool" data-coach-tool="board">⛶ Тактична дошка</button>
         </div>
@@ -165,6 +217,7 @@ const CoachTools = {
       case 'timer': return this.startSessionTimers();
       case 'sync-push': return this.syncCloudNow();
       case 'sync-pull': return this.pullCloudNow();
+      case 'migrate-roster': return this.migrateRoster();
       case 'export': return this.exportAndShare();
       case 'board':
         try {
@@ -225,16 +278,24 @@ CoachTools.GIFT_CATALOG = [
     momentHint: 'Вітаємо в клубі! Перший крок у великій історії Metalist Stuttgart!' },
   { id: 'neural_horse_tester', ico: '🧠', label: 'Нейронний Ударник Штутгарта',
     rarity: 'legendary', hue: 280, pattern: 11, anim: 'neural', special: 'neural-horse',
+    exclusive: 'grok', series: 'Architects',
     description: 'Цей артефакт вручається за глибоке занурення в архітектуру додатку, виявлення критичних багів та візіонерські пропозиції, що формують майбутнє Metalist Stuttgart.',
     momentHint: 'Творець майбутнього: твій код — фундамент нашої перемоги!' },
+  /* ═══════════════════════════════════════════════
+   * GROK EXCLUSIVE — тільки Metalist Stuttgart
+   * Унікальні анімовані артефакти. Додаються лише через Grok.
+   * Серія: Club DNA (емблема, кінь, золото, 2025)
+   * ═══════════════════════════════════════════════ */
+  { id: 'grok_crest_seal_2025', ico: '🛡️', label: 'Золотий Герб 2025',
+    rarity: 'legendary', hue: 42, pattern: 12, anim: 'crest', special: 'crest-seal',
+    exclusive: 'grok', series: 'Club DNA',
+    description: 'Ексклюзивний артефакт Metalist Stuttgart від Grok. Золотий щит із конем Штутгарта та печаткою сезону 2025 — символ фундаменту клубу. Ніде більше не існує.',
+    momentHint: 'Печатка історії: герб, що відкрив еру Metalist Stuttgart.' },
   { id: 'tyshchenko_first_golden_ball', ico: '⚽', label: 'Золотий М\'яч Засновника',
     rarity: 'legendary', hue: 42, pattern: 12, anim: 'golden', special: 'golden-ball',
+    exclusive: 'grok', series: 'Founders',
     description: 'Тренер та команда дарує цей артефакт президенту клубу та головному організатору за візіонерство, створення фундаменту та запуск історичного сезону Metalist Stuttgart.',
-    momentHint: 'Перший Золотий М\'яч клубу 2025/2026: легендарний старт великої історії!' },
-  { id: 'metalist_holo_emblem', ico: '✦', label: 'Голографічний Сигіл Металіста',
-    rarity: 'legendary', hue: 185, pattern: 14, anim: 'hologram', special: 'metalist-holo-emblem',
-    description: 'Ексклюзивний клубний сигіл Metalist Stuttgart: багатошаровий голографічний щит, сканувальні лінії та холодне фотонне світло. Створений спеціально для клубної платформи.',
-    momentHint: 'CLUB SIGNAL · 001 — знак приналежності до майбутнього Metalist Stuttgart.' }
+    momentHint: 'Перший Золотий М\'яч клубу 2025/2026: легендарний старт великої історії!' }
 ];
 
 
@@ -404,6 +465,8 @@ CoachTools.awardGift = function (playerId, giftId, note) {
     special: cat.special || null,
     anim: cat.anim || 'float',
     mediaUrl: cat.mediaUrl || '',
+    exclusive: cat.exclusive || null,
+    series: cat.series || null,
     description: cat.description || '',
     momentHint: cat.momentHint || '',
     createdAt: new Date().toISOString(),
@@ -414,6 +477,12 @@ CoachTools.awardGift = function (playerId, giftId, note) {
   try { TelegramManager.hapticSuccess && TelegramManager.hapticSuccess(); } catch (_) {}
   const rar = (CoachTools.RARITY_LABEL && CoachTools.RARITY_LABEL[gift.rarity]) || gift.rarity;
   if (typeof Toast !== 'undefined') Toast.show(cat.ico + ' «' + cat.label + '» · ' + rar + ' · ' + serial, 'ok');
+  try {
+    if (typeof GiftFX !== 'undefined' && GiftFX.showReceived) {
+      const pl = (s.players || []).find(p => p.id === playerId);
+      GiftFX.showReceived(gift, cat, pl);
+    }
+  } catch (_) {}
   try { if (typeof App !== 'undefined' && App.renderCurrent) App.renderCurrent(); } catch (_) {}
   return gift;
 };
@@ -424,7 +493,7 @@ CoachTools.attachGift = function (giftId) {
   if (!g) return false;
   g.attached = true;
   try { StorageManager.save(); } catch (_) {}
-  if (typeof Toast !== 'undefined') Toast.show('Подарунок прикріплено до профілю', 'ok');
+  if (typeof Toast !== 'undefined') Toast.show(typeof t==='function'?t('toast_gift_attach'):'Подарунок прикріплено до профілю', 'ok');
   return true;
 };
 
@@ -442,7 +511,7 @@ CoachTools.addMoment = function (playerId, text, trainingId) {
   if (!m.text) return null;
   s.moments.push(m);
   try { StorageManager.save(); } catch (_) {}
-  if (typeof Toast !== 'undefined') Toast.show('Памʼятний момент збережено', 'ok');
+  if (typeof Toast !== 'undefined') Toast.show(typeof t==='function'?t('toast_moment_save'):'Памʼятний момент збережено', 'ok');
   return m;
 };
 
@@ -481,7 +550,7 @@ CoachTools.deleteGift = function (giftInstanceId) {
   s.gifts = s.gifts.filter(g => g.id !== giftInstanceId);
   if (s.gifts.length === before) return false;
   try { StorageManager.save(); } catch (_) {}
-  if (typeof Toast !== 'undefined') Toast.show('Подарунок видалено', 'ok');
+  if (typeof Toast !== 'undefined') Toast.show(typeof t==='function'?t('toast_gift_delete'):'Подарунок видалено', 'ok');
   try { if (typeof App !== 'undefined' && App.renderCurrent) App.renderCurrent(); } catch (_) {}
   return true;
 };
@@ -492,7 +561,7 @@ CoachTools.editGiftNote = function (giftInstanceId, note) {
   if (!g) return false;
   g.note = String(note || '').trim();
   try { StorageManager.save(); } catch (_) {}
-  if (typeof Toast !== 'undefined') Toast.show('Пам\'ятний момент оновлено', 'ok');
+  if (typeof Toast !== 'undefined') Toast.show(typeof t==='function'?t('toast_moment_upd'):'Пам\'ятний момент оновлено', 'ok');
   return true;
 };
 
@@ -503,7 +572,7 @@ CoachTools.detachGift = function (giftInstanceId) {
   g.attached = false;
   g.featured = false;
   try { StorageManager.save(); } catch (_) {}
-  if (typeof Toast !== 'undefined') Toast.show('Знято з профілю', 'ok');
+  if (typeof Toast !== 'undefined') Toast.show(typeof t==='function'?t('toast_gift_detach'):'Знято з профілю', 'ok');
   return true;
 };
 
@@ -514,7 +583,7 @@ CoachTools.toggleAttachGift = function (giftInstanceId) {
   g.attached = !(g.attached !== false);
   if (!g.attached) g.featured = false;
   try { StorageManager.save(); } catch (_) {}
-  if (typeof Toast !== 'undefined') Toast.show(g.attached ? 'Прикріплено до профілю' : 'Знято з профілю', 'ok');
+  if (typeof Toast !== 'undefined') Toast.show(g.attached ? (typeof t==='function'?t('toast_gift_attach'):'Прикріплено') : (typeof t==='function'?t('toast_gift_detach'):'Знято'), 'ok');
   return g.attached;
 };
 
@@ -578,4 +647,261 @@ CoachTools.getCoachAchievements = function () {
     moments,
     attendancePct: CoachTools.coachAttendanceRate()
   };
+};
+
+
+/* ═══════════════════════════════════════════════════════════
+   ClubBot — клієнт до серверного Telegram-бота клубу
+   Автоопитування за 36 год, план, склад, події.
+   Токен НІКОЛИ не в браузері — лише URL API + опційний secret.
+   ═══════════════════════════════════════════════════════════ */
+const ClubBot = {
+  apiBase() {
+    try {
+      if (window.__MS_AUTH_API__) return String(window.__MS_AUTH_API__).replace(/\/$/, '');
+      const meta = document.querySelector('meta[name="ms-auth-api"]');
+      if (meta && meta.content) return meta.content.replace(/\/$/, '');
+      const ls = localStorage.getItem('ms_auth_api');
+      if (ls) return ls.replace(/\/$/, '');
+    } catch (_) {}
+    return 'http://127.0.0.1:8787';
+  },
+  secret() {
+    try { return localStorage.getItem('ms_bot_secret') || ''; } catch (_) { return ''; }
+  },
+  chatId() {
+    try {
+      const s = Store.get();
+      return (s.settings && s.settings.telegramChatId) || localStorage.getItem('ms_club_chat_id') || '';
+    } catch (_) { return ''; }
+  },
+  setChatId(id) {
+    const v = String(id || '').trim();
+    try {
+      const s = Store.get();
+      if (!s.settings) s.settings = {};
+      s.settings.telegramChatId = v;
+      if (typeof StorageManager !== 'undefined') StorageManager.save();
+    } catch (_) {}
+    try { localStorage.setItem('ms_club_chat_id', v); } catch (_) {}
+  },
+  autoPollEnabled() {
+    try {
+      const s = Store.get();
+      if (s.settings && s.settings.autoAttendancePoll != null) return !!s.settings.autoAttendancePoll;
+      return localStorage.getItem('ms_auto_poll') === '1';
+    } catch (_) { return false; }
+  },
+  setAutoPoll(on) {
+    try {
+      const s = Store.get();
+      if (!s.settings) s.settings = {};
+      s.settings.autoAttendancePoll = !!on;
+      if (typeof StorageManager !== 'undefined') StorageManager.save();
+    } catch (_) {}
+    try { localStorage.setItem('ms_auto_poll', on ? '1' : '0'); } catch (_) {}
+  },
+
+  async request(path, body, method) {
+    method = method || (body ? 'POST' : 'GET');
+    const headers = { 'Content-Type': 'application/json' };
+    const sec = this.secret();
+    if (sec) headers['X-Bot-Secret'] = sec;
+    const opts = { method, headers };
+    if (body) opts.body = JSON.stringify(body);
+    const res = await fetch(this.apiBase() + path, opts);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.ok === false) {
+      const err = new Error(data.message || data.error || ('HTTP ' + res.status));
+      err.data = data;
+      throw err;
+    }
+    return data;
+  },
+
+  async status() {
+    return this.request('/api/bot/status');
+  },
+  async discoverChats() {
+    return this.request('/api/bot/discover-chats');
+  },
+
+  async sendAttendancePoll(training) {
+    return this.request('/api/bot/attendance-poll', {
+      chatId: this.chatId() || undefined,
+      training: training || this._nextTraining(),
+      hoursBefore: 36
+    });
+  },
+  async sendTrainingPlan(training) {
+    const s = Store.get();
+    return this.request('/api/bot/training-plan', {
+      chatId: this.chatId() || undefined,
+      training: training || this._nextTraining(),
+      clubName: (s.settings && s.settings.clubName) || 'МЕТАЛІСТ ШТУТГАРТ'
+    });
+  },
+  async sendMatchLineup(match, players) {
+    const s = Store.get();
+    const lineup = players || (s.players || []).filter(p => p.group === 'main' || p.group === 'starter').slice(0, 16);
+    return this.request('/api/bot/match-lineup', {
+      chatId: this.chatId() || undefined,
+      match: match || {},
+      players: lineup,
+      clubName: (s.settings && s.settings.clubName) || 'МЕТАЛІСТ ШТУТГАРТ'
+    });
+  },
+  async sendClubEvent(opts) {
+    const s = Store.get();
+    return this.request('/api/bot/club-event', Object.assign({
+      chatId: this.chatId() || undefined,
+      clubName: (s.settings && s.settings.clubName) || 'МЕТАЛІСТ ШТУТГАРТ'
+    }, opts || {}));
+  },
+  async scheduleCheck() {
+    if (!this.autoPollEnabled()) return { ok: true, skipped: 'auto_off' };
+    const s = Store.get();
+    return this.request('/api/bot/schedule-check', {
+      chatId: this.chatId() || undefined,
+      hoursBefore: 36,
+      windowHours: 8,
+      trainings: (s.trainings || []).filter(t => t && t.status === 'planned')
+    });
+  },
+  _nextTraining() {
+    const s = Store.get();
+    const today = new Date().toISOString().slice(0, 10);
+    return (s.trainings || [])
+      .filter(t => t.status === 'planned' && t.date >= today)
+      .sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || '')))[0] || null;
+  },
+
+  /** Періодична перевірка (раз на годину) — опитування за ~36 год */
+  startScheduler() {
+    if (this._timer) return;
+    const tick = async () => {
+      try {
+        if (!this.autoPollEnabled()) return;
+        const r = await this.scheduleCheck();
+        if (r && r.sent && r.sent.length && typeof Toast !== 'undefined') {
+          Toast.show('Бот: опитування відвідування надіслано (' + r.sent.length + ')', 'ok');
+        }
+      } catch (e) {
+        console.warn('[ClubBot] schedule', e.message || e);
+      }
+    };
+    setTimeout(tick, 8000);
+    this._timer = setInterval(tick, 60 * 60 * 1000);
+  }
+};
+if (typeof window !== 'undefined') window.ClubBot = ClubBot;
+
+CoachTools.clubBotPanelHtml = function () {
+  const chat = (typeof ClubBot !== 'undefined' && ClubBot.chatId()) || '';
+  const auto = (typeof ClubBot !== 'undefined' && ClubBot.autoPollEnabled());
+  return (
+    '<div class="card glass coach-bot-panel" style="margin-top:12px">' +
+      '<div class="card-h">🤖 Бот клубу (Telegram)</div>' +
+      '<p class="note-sm" style="opacity:.75;margin:6px 0 10px">Автоповідомлення в групу: опитування за 36 год, план, склад, події. Бот має бути адміном групи.</p>' +
+      '<label class="fld"><span>Chat ID групи</span>' +
+        '<input type="text" id="clubBotChatId" class="inp" placeholder="-100…" value="' + String(chat).replace(/"/g, '&quot;') + '"/>' +
+      '</label>' +
+      '<label class="fld row" style="display:flex;align-items:center;gap:8px;margin:8px 0">' +
+        '<input type="checkbox" id="clubBotAutoPoll" ' + (auto ? 'checked' : '') + '/>' +
+        '<span>Авто-опитування за 36 год до тренування</span>' +
+      '</label>' +
+      '<div class="coach-tools-grid" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">' +
+        '<button type="button" class="btn btn-s" data-club-bot="save">💾 Зберегти</button>' +
+        '<button type="button" class="btn btn-s" data-club-bot="status">Статус бота</button>' +
+        '<button type="button" class="btn btn-s" data-club-bot="discover">Знайти Chat ID</button>' +
+        '<button type="button" class="btn btn-s" data-club-bot="poll">📋 Опитування зараз</button>' +
+        '<button type="button" class="btn btn-s" data-club-bot="plan">📝 План у чат</button>' +
+        '<button type="button" class="btn btn-s" data-club-bot="lineup">👥 Склад у чат</button>' +
+        '<button type="button" class="btn btn-s" data-club-bot="event">📣 Подія</button>' +
+        '<button type="button" class="btn btn-s" data-club-bot="check">⏱ Перевірити розклад</button>' +
+      '</div>' +
+      '<p class="note-sm" style="margin-top:10px;opacity:.65">Група: t.me/+ekGGhRwvEuI0N2Ey · додайте бота → напишіть у групі будь-що → «Знайти Chat ID»</p>' +
+    '</div>'
+  );
+};
+
+CoachTools.bindClubBot = function (root) {
+  const el = root || document;
+  el.querySelectorAll('[data-club-bot]').forEach(btn => {
+    if (btn._clubBotBound) return;
+    btn._clubBotBound = true;
+    btn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const act = btn.getAttribute('data-club-bot');
+      try {
+        if (act === 'save') {
+          const id = (document.getElementById('clubBotChatId') || {}).value || '';
+          const auto = !!(document.getElementById('clubBotAutoPoll') || {}).checked;
+          ClubBot.setChatId(id);
+          ClubBot.setAutoPoll(auto);
+          if (auto) ClubBot.startScheduler();
+          if (typeof Toast !== 'undefined') Toast.show('Налаштування бота збережено', 'ok');
+          return;
+        }
+        if (act === 'status') {
+          const r = await ClubBot.status();
+          const name = r.bot ? ('@' + (r.bot.username || r.bot.first_name)) : '—';
+          if (typeof Toast !== 'undefined') Toast.show('Бот: ' + name + (r.defaultChat ? ' · chat OK' : ''), 'ok');
+          return;
+        }
+        if (act === 'discover') {
+          const r = await ClubBot.discoverChats();
+          const chats = r.chats || [];
+          if (!chats.length) {
+            if (typeof Toast !== 'undefined') Toast.show('Груп не знайдено. Додайте бота в чат і напишіть повідомлення.', 'warn');
+            return;
+          }
+          const pick = chats[0];
+          ClubBot.setChatId(String(pick.id));
+          const inp = document.getElementById('clubBotChatId');
+          if (inp) inp.value = String(pick.id);
+          if (typeof Toast !== 'undefined') Toast.show('Chat ID: ' + pick.id + ' (' + (pick.title || '') + ')', 'ok');
+          return;
+        }
+        if (act === 'poll') {
+          const t = ClubBot._nextTraining();
+          if (!t) { Toast.show('Немає запланованого тренування', 'warn'); return; }
+          await ClubBot.sendAttendancePoll(t);
+          Toast.show('Опитування відправлено в групу', 'ok');
+          return;
+        }
+        if (act === 'plan') {
+          const t = ClubBot._nextTraining();
+          if (!t) { Toast.show('Немає запланованого тренування', 'warn'); return; }
+          await ClubBot.sendTrainingPlan(t);
+          Toast.show('План тренування в чаті', 'ok');
+          return;
+        }
+        if (act === 'lineup') {
+          await ClubBot.sendMatchLineup({});
+          Toast.show('Склад надіслано', 'ok');
+          return;
+        }
+        if (act === 'event') {
+          const title = window.prompt('Назва події:', 'Збір команди') || '';
+          if (!title) return;
+          const body = window.prompt('Опис (необовʼязково):', '') || '';
+          await ClubBot.sendClubEvent({ title, body });
+          Toast.show('Подію опубліковано', 'ok');
+          return;
+        }
+        if (act === 'check') {
+          ClubBot.setAutoPoll(true);
+          const r = await ClubBot.scheduleCheck();
+          const n = (r.sent && r.sent.length) || 0;
+          Toast.show(n ? ('Надіслано опитувань: ' + n) : 'Немає тренувань у вікні 36 год', n ? 'ok' : 'warn');
+          return;
+        }
+      } catch (err) {
+        console.warn('[ClubBot]', err);
+        if (typeof Toast !== 'undefined') Toast.show('Бот: ' + (err.message || 'помилка API'), 'err');
+      }
+    });
+  });
 };

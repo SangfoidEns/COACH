@@ -287,8 +287,14 @@ const AuthManager = {
   },
 
   roleLabel() {
-    if (this.role === 'coach') return 'Тренер';
-    if (this.role === 'player') return 'Гравець';
+    const r = this.role || 'guest';
+    if (typeof I18n !== 'undefined' && I18n.t) {
+      if (r === 'coach') return I18n.t('role_coach', 'Тренер');
+      if (r === 'player') return I18n.t('role_player', 'Гравець');
+      return I18n.t('role_guest', 'Гість');
+    }
+    if (r === 'coach') return 'Тренер';
+    if (r === 'player') return 'Гравець';
     return 'Гість';
   },
 

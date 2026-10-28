@@ -37,10 +37,10 @@ const Views = {
     let me = null;
     try { me = AuthManager.getLinkedPlayer && AuthManager.getLinkedPlayer(); } catch (_) {}
     return `
-      <div class="st">Команда · МЕТАЛІСТ ШТУТГАРТ</div>
+      <div class="st">${t('team_title')} · МЕТАЛІСТ ШТУТГАРТ</div>
       ${me ? this._fifaCard(me, {}) : this._noPlayerLink()}
       <div class="card glass">
-        <div class="ct">Режим гравця</div>
+        <div class="ct">${t('player_mode')}</div>
         <p class="note-sm">Картка та порівняння тимчасово обмежені.${msg ? ' (' + sanitize(msg) + ')' : ''}</p>
         <p class="note-sm">Попросіть тренера перевірити Telegram-нік у вашій анкеті та зробіть Імпорт JSON.</p>
         <button type="button" class="btn btn-s btn-sm" data-io="import" data-action="import-trigger">Імпорт JSON</button>
@@ -91,12 +91,11 @@ const Views = {
         const rar = g.rarity || 'common';
         const hue = g.hue != null ? g.hue : 42;
         const title = sanitize((g.label || '') + (g.note ? (' — ' + g.note) : ''));
-        const holo = g.special === 'metalist-holo-emblem' || g.giftId === 'metalist_holo_emblem';
-        return '<button type="button" class="tg-gift-strip-item rarity-' + rar + (holo ? ' art-metalist-holo-emblem' : '') +
+        return '<button type="button" class="tg-gift-strip-item rarity-' + rar +
           '" style="--art-hue:' + hue + '" title="' + title +
           '" data-action="inspect-artifact" data-gift-uid="' + (g.id || '') +
           '" data-gift-id="' + (g.giftId || '') + '">' +
-          (holo && typeof MetalistHoloEmblem !== 'undefined' ? MetalistHoloEmblem.markup() : '<span class="nft-art-ico">' + (g.ico || '★') + '</span>') + '</button>';
+          '<span class="nft-art-ico">' + (g.ico || '★') + '</span></button>';
       }).join('') +
       (list.length > 12 ? ('<span class="tg-gift-more">+' + (list.length - 12) + '</span>') : '') +
       '</div>';
@@ -135,9 +134,9 @@ const Views = {
       const hue = g.hue != null ? g.hue : 42;
       const title = sanitize((g.label || '') + (g.serial ? (' · ' + g.serial) : '') + (g.note ? (' — ' + g.note) : ''));
       let special = '';
-      if (g.special === 'metalist-holo-emblem' || g.giftId === 'metalist_holo_emblem') special = ' art-metalist-holo-emblem';
-      else if (g.special === 'neural-horse' || g.giftId === 'neural_horse_tester') special = ' art-neural-horse';
+      if (g.special === 'neural-horse' || g.giftId === 'neural_horse_tester') special = ' art-neural-horse';
       else if (g.special === 'golden-ball' || g.giftId === 'tyshchenko_first_golden_ball') special = ' art-golden-ball';
+      else if (g.special === 'crest-seal' || g.giftId === 'grok_crest_seal_2025') special = ' art-crest-seal';
       else if (g.special) special = ' art-' + String(g.special).replace(/[^a-z0-9-]/gi, '');
       // Inline transform as hard fallback (works even if CSS vars fail)
       return '<span class="tg-gift-item nft-art rarity-' + rar + special + ' anim-' + (g.anim || 'float') +
@@ -146,8 +145,8 @@ const Views = {
         ';transform:translate(' + x.toFixed(1) + 'px,' + y.toFixed(1) + 'px) scale(1);opacity:1;visibility:visible"' +
         ' title="' + title +
         '" data-gift-id="' + (g.giftId || '') + '" data-action="inspect-artifact" data-gift-uid="' + (g.id || '') + '">' +
-        (special === ' art-metalist-holo-emblem' && typeof MetalistHoloEmblem !== 'undefined' ? MetalistHoloEmblem.markup() : '<span class="nft-art-core" aria-hidden="true"></span>' +
-        '<span class="nft-art-ico tg-emoji-anim anim-' + (g.anim || 'float') + '">' + (g.mediaUrl ? ('<img class="tg-emoji-media" src="' + String(g.mediaUrl).replace(/"/g,'') + '" alt="">') : (g.ico || '★')) + '</span>') +
+        '<span class="nft-art-core" aria-hidden="true"></span>' +
+        '<span class="nft-art-ico tg-emoji-anim anim-' + (g.anim || 'float') + '">' + (g.mediaUrl ? ('<img class="tg-emoji-media" src="' + String(g.mediaUrl).replace(/"/g,'') + '" alt="">') : (g.ico || '★')) + '</span>' +
         '<span class="nft-art-wave" aria-hidden="true"></span></span>';
     }).join('');
     return '<div class="tg-gift-cloud tg-gift-expand mode-' + (mode || 'full') +
@@ -180,11 +179,13 @@ const Views = {
   _coachSquadCard() {
     const s = Store.get();
     const set = s.settings || {};
-    let name = set.coachName || 'Artem Serdiuk';
-    let photo = set.coachPhoto || '';
+    // Картка тренера ЗАВЖДИ з налаштувань клубу — НЕ з сесії поточного гравця
+    let name = (set.coachName && String(set.coachName).trim()) || 'Artem Serdiuk';
+    let photo = set.coachPhoto || set.coachPhotoUrl || '';
     try {
-      if (typeof AuthManager !== 'undefined' && AuthManager.displayName) name = AuthManager.displayName() || name;
-      if (!photo && typeof TelegramManager !== 'undefined' && TelegramManager.getUser) {
+      // Фото з Telegram — лише якщо поточний користувач реально тренер
+      const isCoachSession = typeof AuthManager !== 'undefined' && AuthManager.isCoach && AuthManager.isCoach();
+      if (!photo && isCoachSession && typeof TelegramManager !== 'undefined' && TelegramManager.getUser) {
         const u = TelegramManager.getUser();
         if (u && u.photo_url) photo = u.photo_url;
       }
@@ -206,8 +207,8 @@ const Views = {
       '<div class="pl-card-av-wrap"><div class="pl-card-av coach-av" style="border-color:#f0c14b;background:linear-gradient(145deg,#3d2e0a,#1a1408)">' + ph + '</div></div>' +
       '<div class="pl-card-body">' +
       '<div class="pl-card-name">★ ' + sanitize(name) + '</div>' +
-      '<div class="pl-card-meta">Головний тренер · METALIST</div>' +
-      '<div class="pl-card-att">Відвідуваність ' + (ach.attendancePct || 0) + '%</div>' +
+      '<div class="pl-card-meta">' + (typeof t==='function'?t('head_coach','Головний тренер'):'Головний тренер') + ' · METALIST</div>' +
+      '<div class="pl-card-att">' + (typeof I18n!=='undefined'?I18n.t('attendance','Відвідуваність'):'Відвідуваність') + ' ' + (ach.attendancePct || 0) + '%</div>' +
       '<div class="coach-mini-stats">' +
         '<span title="У додатку">📱 ' + fmt(ach.appMs) + '</span>' +
         '<span title="На дошці">⚽ ' + fmt(ach.boardMs) + '</span>' +
@@ -298,10 +299,10 @@ const Views = {
         <div class="cp-match-teams">
           <span class="cp-match-us">${sanitize(short)}</span>
           <span class="cp-match-vs">VS</span>
-          <span class="cp-match-them">${sanitize(nextMatch.opponent || 'Суперник')}</span>
+          <span class="cp-match-them">${sanitize(nextMatch.opponent || t('opponent','Суперник'))}</span>
         </div>
         <div class="cp-match-meta">${sanitize(nextMatch.date || '')}${nextMatch.time ? ' · ' + sanitize(nextMatch.time) : ''}</div>
-      </div>` : `<div class="cp-match is-empty">Наступний матч не заплановано</div>`;
+      </div>` : `<div class="cp-match is-empty">${t('next_match_none','Наступний матч не заплановано')}</div>`;
 
     const statusLabel = next
       ? ('Наступне: ' + (next.name || 'Тренування') + (next.date ? ' · ' + next.date : ''))
@@ -309,7 +310,7 @@ const Views = {
 
     return `
       <div class="club-profile">
-        <div class="app-build-tag" aria-hidden="true">build 2026.10.27-c · full</div>
+        <div class="app-build-tag" aria-hidden="true">build 2026.10.28-c · full</div>
 
         <!-- Telegram-style profile card (coach/player) -->
         ${(() => {
@@ -339,7 +340,7 @@ const Views = {
           <div class="cp-status">
             <span class="cp-dot"></span>
             ${pc.kind === 'player'
-              ? ('Відвідуваність ' + Math.round(pc.attPct || 0) + '% · тап по фото → FIFA')
+              ? ((typeof I18n!=='undefined'?I18n.t('attendance','Відвідуваність'):'Відвідуваність') + ' ' + Math.round(pc.attPct || 0) + '% · тап по фото → FIFA')
               : sanitize(statusLabel)}
           </div>
         </div>`;
@@ -347,10 +348,10 @@ const Views = {
 
         <!-- Quick pills -->
         <div class="cp-pills">
-          <button type="button" class="cp-pill cp-pill-p" data-action="new-training">+ Нове тренування</button>
-          <button type="button" class="cp-pill" data-view="tactics">Схеми</button>
-          <button type="button" class="cp-pill" data-view="players">Склад</button>
-          <button type="button" class="cp-pill" data-view="analytics">Статистика</button>
+          <button type="button" class="cp-pill cp-pill-p" data-action="new-training">+ ${t('new_training')}</button>
+          <button type="button" class="cp-pill" data-view="tactics">${t('schemes')}</button>
+          <button type="button" class="cp-pill" data-view="players">${t('squad_title')}</button>
+          <button type="button" class="cp-pill" data-view="analytics">${t('stats')}</button>
         </div>
 
         <!-- Stats glass grid -->
@@ -358,47 +359,48 @@ const Views = {
           <button type="button" class="cp-stat sc-tap" data-view="players">
             <span class="cp-stat-ic">👥</span>
             <span class="cp-stat-val">${avail}</span>
-            <span class="cp-stat-lb">Гравців у строю</span>
-            <span class="cp-stat-sub">з ${s.players.length} · травма ${injured}</span>
+            <span class="cp-stat-lb">${t('players_available')}</span>
+            <span class="cp-stat-sub">${tf('of_total_injury',{total:s.players.length,inj:injured})}</span>
           </button>
           <div class="cp-stat">
             <span class="cp-stat-ic">⏱</span>
             <span class="cp-stat-val">${totalMin || totalHours}</span>
-            <span class="cp-stat-lb">${totalMin ? 'хв загалом' : 'год'}</span>
-            <span class="cp-stat-sub">${pastForStats.length} тренувань</span>
+            <span class="cp-stat-lb">${totalMin ? t('min_total') : (typeof I18n!=='undefined'&&I18n.getLang()==='de'?'Std.':'год')}</span>
+            <span class="cp-stat-sub">${tf('trainings_n',{n:pastForStats.length})}</span>
           </div>
           <div class="cp-stat">
             <span class="cp-stat-ic">📊</span>
             <span class="cp-stat-val">${weekLoad || 0}</span>
-            <span class="cp-stat-lb">Тижневе навантаження</span>
+            <span class="cp-stat-lb">${t('weekly_load')}</span>
             <span class="cp-stat-sub">Duration × RPE</span>
           </div>
           <div class="cp-stat">
             <span class="cp-stat-ic">🕐</span>
             <span class="cp-stat-val">${totalHours}</span>
-            <span class="cp-stat-lb">Години тренувань</span>
-            <span class="cp-stat-sub">лише минулі</span>
+            <span class="cp-stat-lb">${t('hours_training')}</span>
+            <span class="cp-stat-sub">${t('past_only')}</span>
           </div>
           <div class="cp-stat cp-stat-wide">
             <span class="cp-stat-ic">📅</span>
-            <span class="cp-stat-lb">Наступний матч</span>
+            <span class="cp-stat-lb">${t('next_match')}</span>
             ${matchHtml}
           </div>
           <div class="cp-stat">
             <span class="cp-stat-ic">🗂</span>
             <span class="cp-stat-val">${boardCount}</span>
-            <span class="cp-stat-lb">Схеми</span>
-            <span class="cp-stat-sub">збережені дошки</span>
+            <span class="cp-stat-lb">${t('schemes')}</span>
+            <span class="cp-stat-sub">${t('saved_boards')}</span>
           </div>
         </div>
 
         <!-- Coach tools (collapse) -->
         <div class="coach-tools-collapse glass cp-block" id="coachToolsCollapse">
           <button type="button" class="coach-tools-handle" data-action="toggle-coach-tools" aria-expanded="false">
-            <span>🛠 Інструменти тренера</span>
-            <span class="note-sm">утримуйте або натисніть</span>
+            <span>🛠 ${t('tools_coach')}</span>
+            <span class="note-sm">${t('tools_hint')}</span>
           </button>
           <div class="coach-tools-body" hidden>
+            ${typeof CoachTools !== 'undefined' && CoachTools.clubBotPanelHtml ? CoachTools.clubBotPanelHtml() : ''}
             ${typeof CoachTools !== 'undefined' ? CoachTools.panelHtml() : ''}
           </div>
         </div>
@@ -406,8 +408,8 @@ const Views = {
         <!-- Recent trainings -->
         <div class="cp-section">
           <div class="cp-sec-head">
-            <h2>Останні тренування</h2>
-            <button type="button" class="cp-link" data-view="trainings">Переглянути всі ›</button>
+            <h2>${t('recent_trainings')}</h2>
+            <button type="button" class="cp-link" data-view="trainings">${t('view_all')}</button>
           </div>
           <div class="cp-list">
             ${recent.length ? recent.map(t => {
@@ -415,25 +417,25 @@ const Views = {
               const stClass = st === 'cancelled' || st === 'canceled' ? 'is-cancel' : (st === 'done' || st === 'completed' ? 'is-done' : (st === 'draft' ? 'is-draft' : ''));
               return `<div class="cp-row card-training tg-row ${stClass}" data-training-id="${t.id}">
                 <div class="cp-row-main">
-                  <div class="cp-row-title">${sanitize(t.name || 'Тренування')}</div>
-                  <div class="cp-row-meta">${sanitize(t.date || '')} · ${t.duration || 0}хв · ${sanitize(st)}</div>
+                  <div class="cp-row-title">${sanitize(t.name || (typeof I18n!=='undefined'?I18n.t('training_word','Тренування'):'Тренування'))}</div>
+                  <div class="cp-row-meta">${sanitize(t.date || '')} · ${t.duration || 0}${(typeof I18n!=='undefined'?I18n.t('min_short','хв'):'хв')} · ${sanitize(st)}</div>
                 </div>
-                <button type="button" class="cp-row-btn coach-only" data-edit-training="${t.id}">Відкрити</button>
+                <button type="button" class="cp-row-btn coach-only" data-edit-training="${t.id}">${(typeof I18n!=='undefined'?I18n.t('open','Відкрити'):'Відкрити')}</button>
               </div>`;
-            }).join('') : '<div class="cp-empty">Немає тренувань</div>'}
+            }).join('') : '<div class="cp-empty">' + t('no_trainings') + '</div>'}
           </div>
         </div>
 
         ${drafts.length ? `
         <div class="cp-section coach-only">
-          <div class="cp-sec-head"><h2>Чернетки / Закріплені</h2></div>
+          <div class="cp-sec-head"><h2>${t('drafts_pinned')}</h2></div>
           <div class="cp-list">
             ${drafts.map(t => `<div class="cp-row card-training tg-row" data-training-id="${t.id}">
               <div class="cp-row-main">
                 <div class="cp-row-title">${sanitize(t.name || 'Чернетка')}</div>
                 <div class="cp-row-meta"><span class="badge b-i">${sanitize(t.status)}</span></div>
               </div>
-              <button type="button" class="cp-row-btn" data-edit-training="${t.id}">Відкрити</button>
+              <button type="button" class="cp-row-btn" data-edit-training="${t.id}">${(typeof I18n!=='undefined'?I18n.t('open','Відкрити'):'Відкрити')}</button>
             </div>`).join('')}
           </div>
         </div>` : ''}
@@ -554,7 +556,10 @@ const Views = {
       ? ('<div class="fifa-gifts">' + gifts.slice(0, 10).map(g => {
           const rar = g.rarity || 'common';
           const rarL = (typeof CoachTools !== 'undefined' && CoachTools.RARITY_LABEL && CoachTools.RARITY_LABEL[rar]) || rar;
-          const sp = (g.special === 'neural-horse' || g.giftId === 'neural_horse_tester') ? ' art-neural-horse' : '';
+          const sp = (g.special === 'neural-horse' || g.giftId === 'neural_horse_tester') ? ' art-neural-horse'
+            : (g.special === 'golden-ball' || g.giftId === 'tyshchenko_first_golden_ball') ? ' art-golden-ball'
+            : (g.special === 'crest-seal' || g.giftId === 'grok_crest_seal_2025') ? ' art-crest-seal'
+            : (g.special ? (' art-' + String(g.special).replace(/[^a-z0-9-]/gi, '')) : '');
           return '<span class="fifa-gift-chip nft-chip rarity-' + rar + sp + '" style="--art-hue:' + (g.hue != null ? g.hue : 42) + '" title="' +
             sanitize((g.label || '') + (g.serial ? (' · ' + g.serial) : '') + (g.note ? (' — ' + g.note) : '')) +
             '" data-action="inspect-artifact" data-gift-uid="' + (g.id || '') + '">' +
@@ -598,7 +603,7 @@ const Views = {
         <div class="fifa-meta">${sanitize(stLabel)}${tg ? ' · ' + tg : ''}</div>
         <div class="fifa-stats">
           <div class="fifa-stat"><b>${cond}%</b><span>Готовність</span></div>
-          <div class="fifa-stat"><b>${att}</b><span>Відвідування</span></div>
+          <div class="fifa-stat"><b>${att}</b><span>${typeof t==='function'?t('longpress_attendance'):'Відвідування'}</span></div>
           <div class="fifa-stat"><b>${rpe}</b><span>Сер. RPE</span></div>
           <div class="fifa-stat"><b>${load}</b><span>Load 28д</span></div>
           <div class="fifa-stat"><b>${p.load != null ? p.load : '—'}</b><span>Load</span></div>
@@ -780,9 +785,9 @@ const Views = {
 
     return `
       <div class="card glass player-stats-card">
-        <div class="ct">Моя статистика · тренування</div>
+        <div class="ct">${t('my_stats_training')}</div>
         <div class="dg" style="margin-bottom:10px">
-          <div class="sc"><div class="lb">Відвідуваність</div><div class="vl">${attPct}%</div><div class="sb">${presentCnt}/${totalCnt || '—'} останніх</div></div>
+          <div class="sc"><div class="lb">${(typeof I18n!=='undefined'?I18n.t('attendance','Відвідуваність'):'Відвідуваність')}</div><div class="vl">${attPct}%</div><div class="sb">${presentCnt}/${totalCnt || '—'} останніх</div></div>
           <div class="sc"><div class="lb">Сер. RPE</div><div class="vl">${stats && stats.avgRpe != null ? stats.avgRpe : '—'}</div></div>
           <div class="sc"><div class="lb">Load 28д</div><div class="vl">${stats && stats.load28 != null ? stats.load28 : '—'}</div></div>
         </div>
@@ -851,7 +856,7 @@ const Views = {
       : (pc ? `<span class="cp-avatar-ph">${sanitize(pc.initials)}</span>` : '');
 
     return `
-      <div class="st">Мій кабінет · МЕТАЛІСТ ШТУТГАРТ
+      <div class="st">${t('my_cabinet')} · МЕТАЛІСТ ШТУТГАРТ
         <button type="button" class="btn btn-s btn-sm" data-io="import" data-action="import-trigger">Імпорт JSON</button>
         <button type="button" class="btn btn-s btn-sm" data-action="edit-self-player">Моя картка</button>
       </div>
@@ -869,15 +874,15 @@ const Views = {
           <h1 class="cp-title cp-title-name">${sanitize(pc.name)}${this._giftStatusBadge(pc.gifts)}</h1>
           <div class="cp-role-badge" style="border-color:var(--pos-ring);color:var(--pos-ring)">${sanitize(pc.pos)}</div>
           <div class="cp-club-line cp-club-brand"><span class="cp-brand-a">Металіст</span> <span class="cp-brand-b">Штутгарт</span></div>
-          <div class="cp-status"><span class="cp-dot"></span>Відвідуваність ${Math.round(pc.attPct)}% · тап по фото → FIFA</div>
+          <div class="cp-status"><span class="cp-dot"></span>${(typeof I18n!=='undefined'?I18n.t('attendance','Відвідуваність'):'Відвідуваність')} ${Math.round(pc.attPct)}% · тап по фото → FIFA</div>
         </div>` : this._noPlayerLink()}
 
       <div class="cp-pills player-quick">
         <button type="button" class="cp-pill cp-pill-primary" data-action="open-default-board">⚽ Дошка</button>
         <button type="button" class="cp-pill" data-view="tactics">📋 Схеми</button>
-        <button type="button" class="cp-pill" data-view="trainings">📅 Тренування</button>
-        <button type="button" class="cp-pill" data-view="players">👥 Склад</button>
-        <button type="button" class="cp-pill" data-view="analytics">📊 Аналітика</button>
+        <button type="button" class="cp-pill" data-view="trainings">📅 ${t('nav_trainings')}</button>
+        <button type="button" class="cp-pill" data-view="players">👥 ${t('nav_squad')}</button>
+        <button type="button" class="cp-pill" data-view="analytics">📊 ${t('analytics')}</button>
       </div>
 
       ${me ? this._myStatsCharts(me, stats) : ''}
@@ -889,7 +894,7 @@ const Views = {
       </div>
 
       <div class="card glass">
-        <div class="ct">Останні тренування</div>
+        <div class="ct">${t('recent_trainings')}</div>
         <div class="player-tr-list">${pastTr.length ? pastTr.map(t => {
           const a = me && t.attendance && t.attendance[me.id];
           const present = a ? (a.present !== false) : null;
@@ -897,14 +902,14 @@ const Views = {
           const rpe = a && a.rpe != null ? ('RPE ' + a.rpe) : '';
           return `<div class="player-tr-row">
             <span class="ptr-badge">${badge}</span>
-            <span class="ptr-name">${sanitize(t.name || 'Тренування')}</span>
+            <span class="ptr-name">${sanitize(t.name || (typeof I18n!=='undefined'?I18n.t('training_word','Тренування'):'Тренування'))}</span>
             <span class="ptr-meta">${sanitize(t.date || '')} ${rpe}</span>
           </div>`;
         }).join('') : '<p class="note-sm">Немає даних. Імпортуйте JSON від тренера.</p>'}</div>
       </div>
 
       <div class="card glass">
-        <div class="ct">Схеми</div>
+        <div class="ct">${t('schemes')}</div>
         <div class="player-scheme-list">${schemes.length ? schemes.map(b =>
           `<button type="button" class="btn btn-s btn-sm" data-load-board="${b.id}" style="margin:4px">${sanitize(b.name || 'Схема')}</button>`
         ).join('') : '<span class="note-sm">Немає схем</span>'}
@@ -939,12 +944,12 @@ const Views = {
       : '<span class="cp-avatar-ph">AS</span>';
     return `
       <div class="card glass coach-public-card">
-        <div class="ct">Головний тренер</div>
+        <div class="ct">${t('head_coach')}</div>
         <button type="button" class="coach-pub-row" data-action="coach-easter">
           <div class="coach-pub-av">${ph}</div>
           <div class="coach-pub-body">
             <div class="coach-pub-name">${sanitize(name)}</div>
-            <div class="coach-pub-meta">Тренувань: ${past.length} · Відвідуваність команди ${attPct}%</div>
+            <div class="coach-pub-meta">Тренувань: ${past.length} · ${(typeof I18n!=='undefined'?I18n.t('attendance','Відвідуваність'):'Відвідуваність')} команди ${attPct}%</div>
             <div class="coach-pub-meta">У додатку: ${appT} · На дошці: ${boardT}</div>
           </div>
           <span class="tg-row-chevron">›</span>
@@ -987,7 +992,7 @@ const Views = {
         </div>
 
         <div class="card glass">
-          <div class="ct">Медіа клубу</div>
+          <div class="ct">${t('club_media')}</div>
           ${media.length ? `<div class="guest-media-grid">${media.map(m => {
             const url = typeof m === 'string' ? m : (m.url || m.src || '');
             const title = typeof m === 'object' ? (m.title || '') : '';
@@ -1023,7 +1028,7 @@ const Views = {
       return aUp === 0 ? ad.localeCompare(bd) : bd.localeCompare(ad);
     });
     return `
-      <div class="st">Тренування ${canEdit ? '<button class="btn btn-p btn-sm" data-action="new-training">+ Нове</button>' : '<span class="note-sm">заплановані та минулі</span>'}</div>
+      <div class="st">${t('trainings_title')} ${canEdit ? '<button class="btn btn-p btn-sm" data-action="new-training">' + t('new_short') + '</button>' : '<span class="note-sm">' + t('planned_and_past') + '</span>'}</div>
       <div class="fb">
         <input type="search" id="trSearch" placeholder="Пошук..." data-filter="trainings">
         <select id="trStatus" data-filter="trainings">
@@ -1040,10 +1045,15 @@ const Views = {
 
   _trStatusLabel(st) {
     const map = {
-      draft: 'Чернетка', planned: 'Заплановане', done: 'Проведено',
-      pinned: 'Закріплене', cancelled: 'Скасовано', canceled: 'Скасовано'
+      planned: t('planned'),
+      done: t('done'),
+      completed: t('done'),
+      cancelled: t('cancelled'),
+      canceled: t('cancelled'),
+      draft: t('draft'),
+      pinned: t('pinned', t('draft'))
     };
-    return map[st] || st || '—';
+    return map[st] || st || '';
   },
 
   _trStatusBadge(st) {
@@ -1059,7 +1069,7 @@ const Views = {
    * long-press = меню дій (редагувати, відвідування, дубль, скасувати, видалити).
    */
   _trList(list) {
-    if (!list.length) return '<div class="es"><div class="ic">📋</div>Немає тренувань</div>';
+    if (!list.length) return '<div class="es"><div class="ic">📋</div>' + t('no_trainings') + '</div>';
     return list.map(t => {
       const total = (t.structure || []).reduce((a, b) => a + (b.duration || 0), 0);
       const structPreview = t.structure && t.structure.length
@@ -1121,7 +1131,7 @@ const Views = {
         </div>
         <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
           <p class="note-sm" style="margin:8px 0 0">Памʼятний підпис додається лише разом із подарунком (кнопки вище).</p>
-          <button type="button" class="btn-s" data-action="edit-player-form" data-player-id="${p.id}">Редагувати анкету</button>
+          <button type="button" class="btn-s" data-action="edit-player-form" data-player-id="${p.id}">${t('edit_player_form')}</button>
         </div>
       </div>`;
     return `<div class="coach-player-view">
@@ -1227,11 +1237,11 @@ const Views = {
           '<div class="pl-card-body">' +
           '<div class="pl-card-name">#' + (p.number || '—') + ' ' + sanitize(name) + ' ' + this._giftStatusBadge(gifs, p.id) + '</div>' +
           '<div class="pl-card-meta">' + sanitize(p.position || '') + ' · ' + role + '</div>' +
-          '<div class="pl-card-att">Відвідуваність ' + att + '%</div>' +
+          '<div class="pl-card-att">' + (typeof I18n!=='undefined'?I18n.t('attendance','Відвідуваність'):'Відвідуваність') + ' ' + att + '%</div>' +
           '</div></div>';
       }).join('');
       return `
-      <div class="st">Склад <span class="note-sm">перегляд · порівняння</span></div>
+      <div class="st">${t('squad_title')} <span class="note-sm">перегляд · порівняння</span></div>
       ${compareBlock}
       <div class="pl-cards">${this._coachSquadCard()}${cards || '<div class="es">Немає гравців</div>'}</div>`;
     }
@@ -1258,7 +1268,7 @@ const Views = {
         '<div class="pl-card-body">' +
         '<div class="pl-card-name">#' + (p.number || '—') + ' ' + sanitize(name) + ' ' + this._giftStatusBadge(gifs, p.id) + '</div>' +
         '<div class="pl-card-meta">' + sanitize(p.position || '') + ' · ' + role + '</div>' +
-        '<div class="pl-card-att">Відвідуваність ' + att + '%</div></div></div>';
+        '<div class="pl-card-att">' + (typeof I18n!=='undefined'?I18n.t('attendance','Відвідуваність'):'Відвідуваність') + ' ' + att + '%</div></div></div>';
     }).join('');
 
     // coach stats strip
@@ -1299,7 +1309,7 @@ const Views = {
         : (`<div class="pl-table glass">
         <div class="pl-head">
           ${th('number', '№')}
-          ${th('name', 'Прізвище')}
+          ${th('name', t('col_lastname','Прізвище'))}
           ${th('pos', 'Поз.')}
           ${th('att', 'Відв.%')}
           ${th('role', 'Склад')}
@@ -1311,8 +1321,8 @@ const Views = {
   tactics() {
     const s = Store.get();
     return `
-      <div class="st">Тактичні схеми</div>
-      <div class="card"><div class="ct">Шаблони тренувальних розстановок</div>
+      <div class="st">${t('tactics_title')}</div>
+      <div class="card"><div class="ct">${t('formation_templates')}</div>
         <p class="note-sm">Сучасні шаблони для дошки. Після відкриття можна вільно змінювати позиції, стрілки та зони.</p>
         <div class="sg">${(DEMO.boardTemplates||[]).map(t => `
           <button type="button" class="sb2" data-board-tpl="${t.scheme}" title="${sanitize(t.description)}"
@@ -1321,15 +1331,15 @@ const Views = {
             <span style="font-size:10px;color:var(--muted)">${t.scheme}</span>
           </button>`).join('')}</div>
       </div>
-      <div class="card"><div class="ct">Усі формації</div>
+      <div class="card"><div class="ct">${t('all_formations')}</div>
         <div class="sg">${Object.keys(SCHEMES).map(k => `<button class="sb2" data-scheme="${k}">${k}</button>`).join('')}</div>
       </div>
-      <div class="card"><div class="ct">Збережені схеми</div>
+      <div class="card"><div class="ct">${t('saved_schemes')}</div>
         <p class="note-sm">Утримуйте схему — відкрити / прикріпити до тренування, гравця чи щоденника.</p>
         ${(() => {
           const boards = (s.boards || []).slice();
           const typeOf = (b) => b.schemeType || b.type || (b.name && /тренув|plan|session/i.test(b.name) ? 'training' : (b.name && /гравець|player/i.test(b.name) ? 'player' : 'tactics'));
-          const label = { training: 'План тренування', tactics: 'Тактика', player: 'Для гравців' };
+          const label = { training: t('scheme_training'), tactics: t('scheme_tactics'), player: t('scheme_player') };
           const groups = { training: [], tactics: [], player: [] };
           boards.forEach(b => {
             const t = typeOf(b);
@@ -1353,7 +1363,7 @@ const Views = {
           return html || '<div class="es">Збережіть схему з дошки (💾)</div>';
         })()}
       </div>
-      <div class="card"><div class="ct">Спеціальні</div>
+      <div class="card"><div class="ct">${t('special')}</div>
         <div class="sg">
           ${['attack','defense','press','setpiece','transition','highpress'].map(t =>
             `<button class="sb2" data-special="${t}">${t}</button>`).join('')}
@@ -1389,7 +1399,7 @@ const Views = {
     ];
 
     return `
-      <div class="st">Календар
+      <div class="st">${t('calendar_title')}
         <div style="display:flex;gap:5px">
           <button class="btn btn-s btn-sm" data-action="cal-prev">←</button>
           <button class="btn btn-s btn-sm" data-action="cal-next">→</button>
@@ -1398,13 +1408,13 @@ const Views = {
       </div>
       <div class="ch"><strong>${title}</strong></div>
       ${grid}
-      <div class="card" style="margin-top:12px"><div class="ct">Події ${ds}</div>
+      <div class="card" style="margin-top:12px"><div class="ct">${t('events')} ${ds}</div>
         ${events.length ? events.map(e => {
         const openAttr = e.type === 'TRAINING' && e.id ? ` data-edit-training="${e.id}"` : (e.type === 'MATCH' && e.id ? ` data-view-match="${e.id}"` : '');
         return `<div class="li"${openAttr} style="cursor:pointer"><div class="inf"><div class="ti">${sanitize(e.title || e.name)}</div><div class="me">${e.type || e.eventType} · ${e.time || ''}</div></div></div>`;
       }).join('') : '<div style="color:var(--muted);font-size:12px">Немає подій</div>'}
       </div>
-      <div class="card"><div class="ct">Мікроцикл / Шаблони</div>
+      <div class="card"><div class="ct">${t('microcycle')}</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
           <button class="btn btn-s btn-sm" data-action="microcycle">Авто-мікроцикл</button>
           <button class="btn btn-s btn-sm" data-tpl="md-1">MD-1</button>
@@ -1418,7 +1428,7 @@ const Views = {
   matches() {
     const s = Store.get();
     return `
-      <div class="st">Матчі <button class="btn btn-p btn-sm" data-action="new-match">+ Матч</button></div>
+      <div class="st">${t('matches_title')} <button class="btn btn-p btn-sm" data-action="new-match">${t('new_match')}</button></div>
       ${s.matches.length ? s.matches.map(m => `
         <div class="card">
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
@@ -1434,121 +1444,143 @@ const Views = {
   },
 
   analytics() {
-    const s = Store.get();
-    const past = LoadModel.pastTrainings(s.trainings);
-    const summary = LoadModel.teamSummary(s.trainings, s.players);
-    const sessions = LoadModel.attendanceBySession(s.trainings);
-    const withAtt = past.filter(t => t.attendance && Object.keys(t.attendance).length);
+    try {
+      const s = Store.get();
+      const past = (LoadModel && LoadModel.pastTrainings)
+        ? LoadModel.pastTrainings(s.trainings)
+        : (s.trainings || []).filter(x => x && x.date);
+      const summary = (LoadModel && LoadModel.teamSummary)
+        ? LoadModel.teamSummary(s.trainings, s.players)
+        : { count: past.length, totalMin: 0, avgInt: 0, weekLoad: 0, overallAtt: null, sessionsWithAtt: 0 };
+      const sessions = (LoadModel && LoadModel.attendanceBySession)
+        ? LoadModel.attendanceBySession(s.trainings)
+        : [];
+      const withAtt = past.filter(tr => tr.attendance && Object.keys(tr.attendance).length);
 
-    // SVG chart: attendance % per session
-    let chartSvg = '';
-    if (sessions.length) {
-      const W = 320, H = 150, padL = 28, padR = 8, padT = 16, padB = 28;
-      const n = sessions.length;
-      const gap = 4;
-      const barW = Math.max(6, (W - padL - padR - gap * (n - 1)) / n);
-      let bars = '';
-      sessions.forEach((sess, i) => {
-        const h = Math.round((sess.pct / 100) * (H - padT - padB));
-        const x = padL + i * (barW + gap);
-        const y = H - padB - h;
-        const col = sess.pct >= 80 ? '#2ecc71' : (sess.pct >= 50 ? '#f1c40f' : '#e74c3c');
-        bars += `<rect x="${x}" y="${y}" width="${barW}" height="${Math.max(2, h)}" rx="3" fill="${col}"/>`;
-        if (n <= 10 || i % Math.ceil(n / 8) === 0) {
-          const lab = (sess.date || '').slice(5); // MM-DD
-          bars += `<text x="${x + barW / 2}" y="${H - 8}" text-anchor="middle" fill="#9aa4b2" font-size="8">${lab}</text>`;
-        }
-      });
-      chartSvg = `<div class="card glass"><div class="ct">Відвідуваність по тренуваннях (лише минулі)</div>
-        <svg class="att-chart" viewBox="0 0 ${W} ${H}" width="100%" height="150" aria-label="Графік відвідуваності">
+      let chartSvg = '';
+      if (sessions.length) {
+        const W = 320, H = 150, padL = 28, padR = 8, padT = 16, padB = 28;
+        const n = sessions.length;
+        const gap = 4;
+        const barW = Math.max(6, (W - padL - padR - gap * (n - 1)) / n);
+        let bars = '';
+        sessions.forEach((sess, i) => {
+          const h = Math.round((sess.pct / 100) * (H - padT - padB));
+          const x = padL + i * (barW + gap);
+          const y = H - padB - h;
+          const col = sess.pct >= 80 ? '#2ecc71' : (sess.pct >= 50 ? '#f1c40f' : '#e74c3c');
+          bars += `<rect x="${x}" y="${y}" width="${barW}" height="${Math.max(2, h)}" rx="3" fill="${col}"/>`;
+          if (n <= 10 || i % Math.ceil(n / 8) === 0) {
+            const lab = (sess.date || '').slice(5);
+            bars += `<text x="${x + barW / 2}" y="${H - 8}" text-anchor="middle" fill="#9aa4b2" font-size="8">${lab}</text>`;
+          }
+        });
+        chartSvg = `<div class="card glass"><div class="ct">${t('attendance_by_training')}</div>
+        <svg class="att-chart" viewBox="0 0 ${W} ${H}" width="100%" height="150" aria-label="attendance">
           <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${H - padB}" stroke="rgba(255,255,255,0.08)"/>
           <line x1="${padL}" y1="${H - padB}" x2="${W - padR}" y2="${H - padB}" stroke="rgba(255,255,255,0.08)"/>
-          <text x="4" y="${padT + 4}" fill="#9aa4b2" font-size="9">100%</text>
-          <text x="4" y="${H - padB}" fill="#9aa4b2" font-size="9">0</text>
           ${bars}
-        </svg>
-        <div class="note-sm">Стовпчик = % присутніх серед відмічених на сесії</div>
-      </div>`;
-    } else {
-      chartSvg = `<div class="card"><div class="ct">Відвідуваність по тренуваннях</div>
-        <div class="es">Немає минулих сесій з відмітками відвідування</div></div>`;
-    }
+        </svg></div>`;
+      } else {
+        chartSvg = `<div class="card glass"><div class="ct">${t('attendance_by_training')}</div>
+          <p class="note-sm">Ще немає даних відвідуваності для графіка.</p></div>`;
+      }
 
-    return `
-      <div class="st">Аналітика
+      const marksLb = (typeof I18n !== 'undefined' ? I18n.t('marks', 'Відмітки') : 'Відмітки');
+      const sessionsHtml = withAtt.length
+        ? withAtt.slice().sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 10).map(tr => {
+            const vals = Object.values(tr.attendance || {});
+            const pr = vals.filter(a => a.present).length;
+            return `<div class="li"><div class="inf"><div class="ti">${sanitize(tr.name)}</div>
+              <div class="me">${tr.date || ''} · ${pr}/${vals.length} · RPE ${tr.intensity || '—'}</div></div>
+              <button type="button" class="btn btn-s btn-sm" data-attendance-training="${tr.id}">✎ ${marksLb}</button></div>`;
+          }).join('')
+        : '<div class="es">' + (typeof I18n!=='undefined'?I18n.t('toast_no_training_att','Ще немає відміток'):'Ще немає відміток') + '</div>';
+
+      const loadRows = (s.players || []).slice().sort((a, b) => {
+        const la = LoadModel && LoadModel.playerLoad ? LoadModel.playerLoad(s.trainings, a.id, 28) : 0;
+        const lb = LoadModel && LoadModel.playerLoad ? LoadModel.playerLoad(s.trainings, b.id, 28) : 0;
+        return lb - la;
+      }).map(p => {
+        const rate = LoadModel && LoadModel.attendanceRate ? LoadModel.attendanceRate(s.trainings, p.id) : null;
+        const avgRpe = LoadModel && LoadModel.avgPlayerRpe ? LoadModel.avgPlayerRpe(s.trainings, p.id) : null;
+        const pload = LoadModel && LoadModel.playerLoad ? LoadModel.playerLoad(s.trainings, p.id, 28) : 0;
+        const bar = avgRpe != null ? avgRpe : (p.load || 0);
+        const lc = bar < 4 ? 'll' : (bar < 7 ? 'lm' : 'lh');
+        const tg = p.telegramUsername ? ' · @' + sanitize(p.telegramUsername) : '';
+        return `<div class="li"><div class="inf"><div class="ti">${p.number || '—'}. ${sanitize(p.firstName || '')} ${sanitize(p.lastName || '')}</div>
+          <div class="me">${p.position || ''} · ${p.condition ?? p.readiness ?? '—'}%${tg}
+            ${rate != null ? ' · ' + rate + '%' : ''}
+            ${avgRpe != null ? ' · RPE ' + avgRpe : ''}
+            ${pload ? ' · L28 ' + pload : ''}
+          </div></div>
+          <div style="min-width:70px"><div class="lb2"><div class="lbf ${lc}" style="width:${Math.min(100, bar * 10)}%"></div></div></div>
+        </div>`;
+      }).join('') || '<div class="es">Немає гравців</div>';
+
+      const statsTable = (s.players || []).slice().sort((a, b) =>
+        String(a.lastName || '').localeCompare(String(b.lastName || ''), 'uk')
+      ).map(p => {
+        const st = this._playerStats ? this._playerStats(p.id) : {};
+        const g = (p.group === 'reserve') ? t('reserve', 'Резерв') : t('starter', 'Основа');
+        return `<div class="pl-stats-row">
+          <span>#${p.number || '—'} ${sanitize(p.lastName || '')}</span>
+          <span>${sanitize(p.position || '')}</span>
+          <span>${g}</span>
+          <span>${st.att != null ? st.att + '%' : '—'}</span>
+          <span>${st.rpe != null ? st.rpe : '—'}</span>
+          <span>${st.load28 != null ? st.load28 : '—'}</span>
+        </div>`;
+      }).join('');
+
+      const bdayHtml = (() => {
+        const list = (s.players || []).filter(p => p.birthDate).map(p => {
+          const d = String(p.birthDate).slice(5, 10);
+          return { p, md: d };
+        }).sort((a, b) => a.md.localeCompare(b.md));
+        if (!list.length) return '<p class="note-sm">' + (typeof I18n!=='undefined'?I18n.t('label_birth','Дата народження'):'Дата народження') + '</p>';
+        return list.map(({ p, md }) =>
+          `<div class="bday-row">🎂 ${md} — #${p.number || ''} ${sanitize(p.lastName || '')} ${sanitize(p.firstName || '')}</div>`
+        ).join('');
+      })();
+
+      return `
+      <div class="st">${t('analytics')}
         <button type="button" class="btn btn-s btn-sm" data-io="export" data-action="export">Експорт</button>
       </div>
       <p class="note-sm">Ураховуються лише тренування з датою ≤ сьогодні (без майбутніх і без скасованих). Навантаження = Тривалість × RPE.</p>
       <div class="dg">
-        <div class="sc"><div class="lb">Минулих тренувань</div><div class="vl">${summary.count}</div></div>
-        <div class="sc"><div class="lb">Загальний час</div><div class="vl">${summary.totalMin}<span style="font-size:13px"> хв</span></div></div>
-        <div class="sc"><div class="lb">Сер. інтенсивність</div><div class="vl">${summary.avgInt}</div></div>
-        <div class="sc"><div class="lb">Тижневий LOAD</div><div class="vl">${summary.weekLoad}</div></div>
-        <div class="sc"><div class="lb">Відвідуваність</div><div class="vl">${summary.overallAtt != null ? summary.overallAtt + '%' : '—'}</div>
-          <div class="sb">${summary.sessionsWithAtt} сесій з відмітками</div></div>
+        <div class="sc"><div class="lb">${(typeof I18n!=='undefined'?I18n.t('past_only','Минулих'):'Минулих')}</div><div class="vl">${summary.count || 0}</div></div>
+        <div class="sc"><div class="lb">${(typeof I18n!=='undefined'?I18n.t('min_total','Загальний час'):'Загальний час')}</div><div class="vl">${summary.totalMin || 0}<span style="font-size:13px"> хв</span></div></div>
+        <div class="sc"><div class="lb">Ø RPE</div><div class="vl">${summary.avgInt || 0}</div></div>
+        <div class="sc"><div class="lb">${(typeof I18n!=='undefined'?I18n.t('weekly_load','Тижневий LOAD'):'Тижневий LOAD')}</div><div class="vl">${summary.weekLoad || 0}</div></div>
+        <div class="sc"><div class="lb">${(typeof I18n!=='undefined'?I18n.t('attendance','Відвідуваність'):'Відвідуваність')}</div><div class="vl">${summary.overallAtt != null ? summary.overallAtt + '%' : '—'}</div>
+          <div class="sb">${summary.sessionsWithAtt || 0} ${(typeof I18n!=='undefined'?I18n.t('marks','відмітки'):'відмітки')}</div></div>
       </div>
       ${chartSvg}
-      <div class="card"><div class="ct">Сесії · відвідування
-        <button type="button" class="btn btn-s btn-sm" style="margin-left:auto" data-view="trainings">До тренувань</button>
+      <div class="card"><div class="ct">${t('sessions_attendance')}
+        <button type="button" class="btn btn-s btn-sm" style="margin-left:auto" data-view="trainings">${t('nav_trainings')}</button>
       </div>
-        ${withAtt.length ? withAtt.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'')).slice(0,10).map(t => {
-          const vals = Object.values(t.attendance || {});
-          const pr = vals.filter(a => a.present).length;
-          return `<div class="li"><div class="inf"><div class="ti">${sanitize(t.name)}</div>
-            <div class="me">${t.date || ''} · ${pr}/${vals.length} присутні · RPE ${t.intensity || '—'}</div></div>
-            <button type="button" class="btn btn-s btn-sm" data-attendance-training="${t.id}">✎ Відмітки</button></div>`;
-        }).join('') : '<div class="es">Ще немає відміток. Утримуйте картку тренування → «Відвідування».</div>'}
+        ${sessionsHtml}
       </div>
-      <div class="card"><div class="ct">Індивідуальне навантаження та відвідуваність</div>
-        ${s.players.slice().sort((a, b) => {
-          const la = LoadModel.playerLoad(s.trainings, a.id, 28);
-          const lb = LoadModel.playerLoad(s.trainings, b.id, 28);
-          return lb - la;
-        }).map(p => {
-          const rate = LoadModel.attendanceRate(s.trainings, p.id);
-          const avgRpe = LoadModel.avgPlayerRpe(s.trainings, p.id);
-          const pload = LoadModel.playerLoad(s.trainings, p.id, 28);
-          const bar = avgRpe != null ? avgRpe : (p.load || 0);
-          const lc = bar < 4 ? 'll' : (bar < 7 ? 'lm' : 'lh');
-          const tg = p.telegramUsername ? ' · @' + sanitize(p.telegramUsername) : '';
-          return `<div class="li"><div class="inf"><div class="ti">${p.number}. ${sanitize(p.firstName)} ${sanitize(p.lastName)}</div>
-            <div class="me">${p.position} · готовність ${p.condition ?? p.readiness ?? '—'}%${tg}
-              ${rate != null ? ' · відвідув. ' + rate + '%' : ''}
-              ${avgRpe != null ? ' · сер. RPE ' + avgRpe : ''}
-              ${pload ? ' · load 28д ' + pload : ''}
-            </div></div>
-            <div style="min-width:70px"><div class="lb2"><div class="lbf ${lc}" style="width:${Math.min(100, bar * 10)}%"></div></div></div>
-          </div>`;
-        }).join('')}
+      <div class="card"><div class="ct">${t('individual_load')}</div>
+        ${loadRows}
       </div>
-      <div class="card glass"><div class="ct">Статистика гравців (як у кабінеті гравця)</div>
+      <div class="card glass"><div class="ct">${t('player_stats_block')}</div>
         <div class="pl-stats-table">
           <div class="pl-stats-head"><span>Гравець</span><span>Поз.</span><span>Група</span><span>Відв.%</span><span>RPE</span><span>Load28</span></div>
-          ${s.players.slice().sort((a,b)=>String(a.lastName||'').localeCompare(String(b.lastName||''),'uk')).map(p => {
-            const st = this._playerStats(p.id);
-            const g = (p.group === 'reserve') ? 'Резерв' : 'Основа';
-            return `<div class="pl-stats-row">
-              <span>#${p.number||'—'} ${sanitize(p.lastName||'')}</span>
-              <span>${sanitize(p.position||'—')}</span>
-              <span>${g}</span>
-              <span>${st.attPct!=null?st.attPct:'—'}%</span>
-              <span>${st.avgRpe!=null?st.avgRpe:'—'}</span>
-              <span>${st.load28!=null?st.load28:'—'}</span>
-            </div>`;
-          }).join('')}
+          ${statsTable}
         </div>
       </div>
-      <div class="card glass"><div class="ct">Дні народження (найближчі)</div>
-        ${(() => {
-          const list = (s.players||[]).filter(p => p.birthDate).map(p => {
-            const d = String(p.birthDate).slice(5,10); // MM-DD
-            return { p, md: d };
-          }).sort((a,b)=>a.md.localeCompare(b.md));
-          if (!list.length) return '<p class="note-sm">Додайте дату народження в анкеті гравця.</p>';
-          return list.map(({p,md}) => `<div class="bday-row">🎂 ${md} — #${p.number||''} ${sanitize(p.lastName||'')} ${sanitize(p.firstName||'')}</div>`).join('');
-        })()}
-      </div>
-`;
+      <div class="card glass"><div class="ct">${t('birthdays')}</div>
+        ${bdayHtml}
+      </div>`;
+    } catch (err) {
+      console.error('[analytics]', err);
+      return `<div class="st">${t('analytics')}</div>
+        <div class="card"><p class="note-sm">Помилка відображення статистики. Спробуйте оновити сторінку.</p>
+        <pre class="note-sm">${String(err && err.message || err)}</pre></div>`;
+    }
   },
 
   settings() {
@@ -1567,11 +1599,22 @@ const Views = {
       const coachHtml = s.coachPhoto
         ? ('<img src="' + s.coachPhoto + '" style="width:100%;height:100%;object-fit:cover"/>')
         : 'АС';
+      const curLang = (typeof I18n !== 'undefined' && I18n.getLang) ? I18n.getLang() : (s.lang || 'uk');
+      const tt = (k, fb) => (typeof t === 'function' ? t(k, fb) : (fb || k));
       return `
-      <div class="st">Налаштування</div>
+      <div class="st">${tt('settings_title', 'Налаштування')}</div>
 
       <div class="card glass">
-        <div class="ct">Фото та логотип</div>
+        <div class="ct">${tt('settings_language', 'Мова інтерфейсу')}</div>
+        <p class="note-sm">${tt('settings_language_hint', '')}</p>
+        <div class="lang-switch" role="group" aria-label="${tt('settings_language', 'Мова')}">
+          <button type="button" class="btn lang-btn ${curLang === 'uk' ? 'btn-p' : 'btn-s'}" data-action="set-lang" data-lang="uk">🇺🇦 Українська</button>
+          <button type="button" class="btn lang-btn ${curLang === 'de' ? 'btn-p' : 'btn-s'}" data-action="set-lang" data-lang="de">🇩🇪 Deutsch</button>
+        </div>
+      </div>
+
+      <div class="card glass">
+        <div class="ct">${tt('settings_photos', 'Фото та логотип')}</div>
         <div class="settings-photo-row" style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;justify-content:center">
           <div style="text-align:center">
             <div class="logo-ph" style="width:72px;height:72px;border-radius:50%;margin:0 auto 8px;overflow:hidden;background:#1a3a5c;display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff">${logoHtml}</div>
@@ -1588,19 +1631,20 @@ const Views = {
       </div>
 
       <div class="card glass coach-tools-settings">
-        <div class="ct">Telegram · інструменти тренера</div>
+        ${typeof CoachTools !== 'undefined' && CoachTools.clubBotPanelHtml ? CoachTools.clubBotPanelHtml() : ''}
+        <div class="ct">${t('telegram_tools')}</div>
         <p class="note-sm">Синхронізація Cloud Storage та шеринг у чат команди.</p>
         <div class="coach-tools-grid" style="display:flex;flex-wrap:wrap;gap:8px">
-          <button type="button" class="btn btn-s coach-tool" data-coach-tool="sync-push">☁ Зберегти в Cloud</button>
+          <button type="button" class="btn btn-s coach-tool" data-coach-tool="sync-push">☁ ${t('save_cloud')}</button>
           <button type="button" class="btn btn-s coach-tool" data-coach-tool="sync-pull">☁ Завантажити з Cloud</button>
           <button type="button" class="btn btn-s coach-tool" data-coach-tool="share-training">📤 План у чат</button>
-          <button type="button" class="btn btn-s coach-tool" data-coach-tool="share-roster">👥 Склад у чат</button>
+          <button type="button" class="btn btn-s coach-tool" data-coach-tool="share-roster">👥 ${t('share_roster')}</button>
         </div>
         <p class="note-sm" id="tgStatusLine" style="margin-top:8px"></p>
       </div>
 
       <div class="card glass">
-        <div class="ct">Клуб</div>
+        <div class="ct">${t('club')}</div>
         <div class="fgr"><label>Назва клубу</label><input id="setClubName" value="${sanitize(s.clubName || '')}"/></div>
         <div class="fgr"><label>Скорочення</label><input id="setClubShort" value="${sanitize(s.clubShort || '')}"/></div>
         <div class="fgr"><label>Імʼя тренера</label><input id="setCoachName" value="${sanitize(s.coachName || 'Artem Serdiuk')}"/></div>
@@ -1617,11 +1661,11 @@ const Views = {
             <button type="button" class="btn btn-s" data-action="toggle-theme" data-theme-set="light">☀️ Світла</button>
           </div>
         </div>
-        <button type="button" class="btn btn-p" data-action="save-settings" style="margin-top:10px">Зберегти</button>
+        <button type="button" class="btn btn-p" data-action="save-settings" style="margin-top:10px">${typeof t==='function'?t('save','Зберегти'):'Зберегти'}</button>
       </div>
 
       <div class="card glass data-io">
-        <div class="ct">Дані</div>
+        <div class="ct">${t('data')}</div>
         <div class="data-io glass-io" style="display:flex;flex-wrap:wrap;gap:8px">
           <button type="button" class="btn btn-p data-io-btn coach-only" data-io="export" data-action="export">Експорт JSON</button>
           <button type="button" class="btn btn-s data-io-btn" data-io="import" data-action="import-trigger">Імпорт JSON</button>
@@ -1630,24 +1674,24 @@ const Views = {
       </div>
 
       <div class="card glass coach-only">
-        <div class="ct">Артефакти клубу (NFT)</div>
+        <div class="ct">${t('artifacts_nft')}</div>
         <p class="note-sm">Встав JSON з Gemini (короткий опис → промпт → JSON) і додай у каталог нагород.</p>
         <div class="fgr full">
           <label>JSON артефакту</label>
           <textarea id="artifactJsonInput" rows="6" placeholder='{ "id": "welcome_club_badge", "ico": "🔰", "label": "...", "rarity": "common", "hue": 200, "pattern": 1, "description": "...", "momentHint": "..." }'></textarea>
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">
-          <button type="button" class="btn btn-p" data-action="add-artifact-json">Додати артефакт у каталог</button>
+          <button type="button" class="btn btn-p" data-action="add-artifact-json">${t('add_artifact')}</button>
           <button type="button" class="btn btn-s" data-action="preview-artifacts">Каталог (${(typeof CoachTools !== 'undefined' && CoachTools.GIFT_CATALOG) ? CoachTools.GIFT_CATALOG.length : 0})</button>
           <button type="button" class="btn btn-s" data-action="create-emoji-artifact">+ Emoji-артефакт</button>
         </div>
         <p class="note-sm" style="margin-top:8px">Після додавання артефакт з’явиться в картці гравця → «Нагородити».</p>
       </div>
 
-      <div class="card"><div class="ct">Про застосунок</div>
+      <div class="card"><div class="ct">${t('about_app')}</div>
         <p style="font-size:12px;color:var(--muted);line-height:1.6">
           Тренерська платформа · МЕТАЛІСТ ШТУТГАРТ<br>
-          Schema v${typeof SCHEMA_VERSION !== 'undefined' ? SCHEMA_VERSION : 2} · build 2026.10.27-c<br>
+          Schema v${typeof SCHEMA_VERSION !== 'undefined' ? SCHEMA_VERSION : 2} · build 2026.10.28-c<br>
           localStorage · Telegram Cloud
         </p>
       </div>`;
@@ -1731,7 +1775,7 @@ const Views = {
           <button class="btn btn-p" data-b3-phase="3-2-5-atk" data-b3-name="Attack 3-2-5">▶ Attack 3-2-5</button>
           <button class="btn btn-p" data-b3-phase="5-2-3" data-b3-name="Mid block 5-2-3">▶ Mid block</button>
           <button class="btn btn-p" data-b3-phase="3-4-3" data-b3-name="High press 3-4-3">▶ High press</button>
-          <button class="btn btn-s" data-action="save-b3-anim">💾 Зберегти анімацію фази</button>
+          <button class="btn btn-s" data-action="save-b3-anim">💾 ${t('save_phase_anim')}</button>
         </div>
       </div>`;
   },

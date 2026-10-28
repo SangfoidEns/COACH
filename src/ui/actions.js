@@ -4,26 +4,26 @@ const Actions = {
   newMyEx() {
     Modal.open('Нова вправа', `
       <div class="fg">
-        <div class="fgr full"><label>Назва</label><input id="mxN" placeholder="3v2 Build-up"></div>
-        <div class="fgr"><label>Категорія</label>
+        <div class="fgr full"><label>${(typeof I18n!=='undefined'?I18n.t('label_name','Назва'):'Назва')}</label><input id="mxN" placeholder="3v2 Build-up"></div>
+        <div class="fgr"><label>${(typeof I18n!=='undefined'?I18n.t('label_category','Категорія'):'Категорія')}</label>
           <select id="mxCat"><option>build-up</option><option>pressing</option><option>transition</option>
           <option>finishing</option><option>possession</option><option>defending</option><option>set-piece</option>
           <option>back-three</option><option>wing-back</option></select>
         </div>
-        <div class="fgr"><label>Хв</label><input type="number" id="mxD" value="15"></div>
+        <div class="fgr"><label>${(typeof I18n!=='undefined'?I18n.t('label_min','Хв'):'Хв')}</label><input type="number" id="mxD" value="15"></div>
         <div class="fgr"><label>RPE</label><input type="number" id="mxI" value="6" min="1" max="10"></div>
-        <div class="fgr full"><label>Мета</label><input id="mxO" placeholder="Progress through first line"></div>
+        <div class="fgr full"><label>${(typeof I18n!=='undefined'?I18n.t('label_goal','Мета'):'Мета')}</label><input id="mxO" placeholder="Progress through first line"></div>
         <div class="fgr full"><label>Coaching points</label><textarea id="mxCP"></textarea></div>
         <div class="fgr full"><label>Tags (кома)</label><input id="mxT" placeholder="3defenders, build-up"></div>
-        <div class="fgr full"><label><input type="checkbox" id="mxBoard" checked> Зберегти поточну дошку</label></div>
+        <div class="fgr full"><label><input type="checkbox" id="mxBoard" checked> ${(typeof I18n!=='undefined'?I18n.t('save_board_with','Зберегти поточну дошку'):'Зберегти поточну дошку')}</label></div>
       </div>`, [
-      { label: 'Скасувати', cls: 'btn-s', action: 'cancel' },
+      { label: (typeof t==='function'?t('cancel'):'Скасувати'), cls: 'btn-s', action: 'cancel' },
       { label: 'Створити', cls: 'btn-p', action: 'create-myex' }
     ]);
   },
   createMyEx() {
     const name = document.getElementById('mxN')?.value?.trim();
-    if (!name) { Toast.show('Вкажіть назву', 'warn'); return; }
+    if (!name) { Toast.show((typeof I18n!=='undefined'?I18n.t('toast_need_name','Вкажіть назву'):'Вкажіть назву'), 'warn'); return; }
     const useBoard = document.getElementById('mxBoard')?.checked;
     let board = null;
     if (useBoard) {
@@ -50,7 +50,7 @@ const Actions = {
       createdAt: new Date().toISOString()
     });
     StorageManager.save(); Modal.close();
-    Toast.show('Вправу збережено', 'ok');
+    Toast.show((typeof I18n!=='undefined'?I18n.t('toast_ex_saved','Вправу збережено'):'Вправу збережено'), 'ok');
     App.navigate('myex');
   },
   myExFromBoard() {
@@ -65,28 +65,28 @@ const Actions = {
     const boardHint = boardCount
       ? ('На дошці зараз <strong>' + boardCount + '</strong> об\'єктів. Можна зберегти знімок разом із записом.')
       : 'Дошка порожня — можна зберегти запис без схеми або спочатку намалювати тактику.';
-    Modal.open(forceBoard ? 'Зберегти дошку в щоденник' : 'Запис у щоденник', `
+    Modal.open(forceBoard ? (typeof I18n!=='undefined'?I18n.t('save_board_diary','Зберегти дошку в щоденник'):'Зберегти дошку в щоденник') : (typeof I18n!=='undefined'?I18n.t('diary_entry','Запис у щоденник'):'Запис у щоденник'), `
       <div class="fg">
-        <div class="fgr full"><label>Заголовок</label><input id="dyT" placeholder="${forceBoard ? 'Тактика / ідея з дошки' : 'Проблема проти high press'}" value="${forceBoard ? 'Схема з дошки · ' + new Date().toLocaleString('uk-UA') : ''}"></div>
-        <div class="fgr"><label>Категорія</label>
+        <div class="fgr full"><label>${(typeof I18n!=='undefined'?I18n.t('label_title','Заголовок'):'Заголовок')}</label><input id="dyT" placeholder="${forceBoard ? 'Тактика / ідея з дошки' : 'Проблема проти high press'}" value="${forceBoard ? 'Схема з дошки · ' + new Date().toLocaleString('uk-UA') : ''}"></div>
+        <div class="fgr"><label>${(typeof I18n!=='undefined'?I18n.t('label_category','Категорія'):'Категорія')}</label>
           <select id="dyC"><option ${forceBoard ? 'selected' : ''}>Tactical Idea</option><option>Training Reflection</option>
           <option>Match Reflection</option><option>Player Observation</option><option>Team Observation</option>
           <option>Problem</option><option>Solution</option><option>Goal</option><option>Meeting</option><option>Personal Note</option></select>
         </div>
-        <div class="fgr"><label>Настрій</label><select id="dyM"><option></option><option>😊</option><option>😐</option><option>😤</option><option selected>💡</option></select></div>
-        <div class="fgr full"><label>Текст</label><textarea id="dyX" rows="4" placeholder="Короткий коментар до схеми..."></textarea></div>
-        <div class="fgr"><label>Гравець</label><select id="dyP"><option value="">—</option>${players}</select></div>
+        <div class="fgr"><label>${(typeof I18n!=='undefined'?I18n.t('label_mood','Настрій'):'Настрій')}</label><select id="dyM"><option></option><option>😊</option><option>😐</option><option>😤</option><option selected>💡</option></select></div>
+        <div class="fgr full"><label>${(typeof I18n!=='undefined'?I18n.t('label_text','Текст'):'Текст')}</label><textarea id="dyX" rows="4" placeholder="Короткий коментар до схеми..."></textarea></div>
+        <div class="fgr"><label>${(typeof I18n!=='undefined'?I18n.t('label_player','Гравець'):'Гравець')}</label><select id="dyP"><option value="">—</option>${players}</select></div>
         <div class="fgr full"><label>Tags</label><input id="dyTags" placeholder="3defenders, pressing"></div>
         <div class="fgr full" style="background:rgba(34,197,94,0.08);padding:10px;border-radius:10px;border:1px solid rgba(34,197,94,0.25)">
           <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer">
             <input type="checkbox" id="dyBoard" ${forceBoard || boardCount > 0 ? 'checked' : ''} style="margin-top:3px">
-            <span><strong>Зберегти дошку разом із записом</strong><br>
+            <span><strong>${(typeof I18n!=='undefined'?I18n.t('save_board_with_entry','Зберегти дошку разом із записом'):'Зберегти дошку разом із записом')}</strong><br>
             <span class="note-sm">${boardHint}</span></span>
           </label>
         </div>
       </div>`, [
-      { label: 'Скасувати', cls: 'btn-s', action: 'cancel' },
-      { label: 'Зберегти в щоденник', cls: 'btn-p', action: 'create-diary' }
+      { label: (typeof t==='function'?t('cancel'):'Скасувати'), cls: 'btn-s', action: 'cancel' },
+      { label: (typeof I18n!=='undefined'?I18n.t('save_diary','Зберегти в щоденник'):'Зберегти в щоденник'), cls: 'btn-p', action: 'create-diary' }
     ]);
   },
 
@@ -123,7 +123,7 @@ const Actions = {
       App.navigate('diary');
     } catch (e) {
       console.error('[createDiary]', e);
-      Toast.show('Помилка збереження щоденника', 'error');
+      Toast.show((typeof I18n!=='undefined'?I18n.t('toast_diary_err','Помилка'):'Помилка'), 'error');
     }
   },
 
@@ -136,22 +136,22 @@ const Actions = {
     const cats = ['Tactical Idea','Training Reflection','Match Reflection','Player Observation','Team Observation','Problem','Solution','Goal','Meeting','Personal Note'];
     Modal.open('Редагування запису', `
       <div class="fg">
-        <div class="fgr full"><label>Заголовок</label><input id="dyT" value="${sanitize(d.title || '')}"></div>
-        <div class="fgr"><label>Категорія</label>
+        <div class="fgr full"><label>${(typeof I18n!=='undefined'?I18n.t('label_title','Заголовок'):'Заголовок')}</label><input id="dyT" value="${sanitize(d.title || '')}"></div>
+        <div class="fgr"><label>${(typeof I18n!=='undefined'?I18n.t('label_category','Категорія'):'Категорія')}</label>
           <select id="dyC">${cats.map(c => `<option ${d.category===c?'selected':''}>${c}</option>`).join('')}</select>
         </div>
-        <div class="fgr"><label>Настрій</label>
+        <div class="fgr"><label>${(typeof I18n!=='undefined'?I18n.t('label_mood','Настрій'):'Настрій')}</label>
           <select id="dyM"><option></option>
             ${['😊','😐','😤','💡'].map(m => `<option ${d.mood===m?'selected':''}>${m}</option>`).join('')}
           </select>
         </div>
-        <div class="fgr full"><label>Текст</label><textarea id="dyX" rows="5">${sanitize(d.text || '')}</textarea></div>
-        <div class="fgr"><label>Гравець</label><select id="dyP"><option value="">—</option>${players}</select></div>
+        <div class="fgr full"><label>${(typeof I18n!=='undefined'?I18n.t('label_text','Текст'):'Текст')}</label><textarea id="dyX" rows="5">${sanitize(d.text || '')}</textarea></div>
+        <div class="fgr"><label>${(typeof I18n!=='undefined'?I18n.t('label_player','Гравець'):'Гравець')}</label><select id="dyP"><option value="">—</option>${players}</select></div>
         <div class="fgr full"><label>Tags</label><input id="dyTags" value="${sanitize((d.tags||[]).join(', '))}"></div>
         <div class="fgr full"><label><input type="checkbox" id="dyBoard"> ${d.board ? 'Оновити дошку з поточної' : 'Прикріпити поточну дошку'}</label></div>
         ${d.board ? '<p class="note-sm">У запису вже є прикріплена дошка. Відкрити: кнопка ⚽ у списку.</p>' : ''}
       </div>`, [
-      { label: 'Скасувати', cls: 'btn-s', action: 'cancel' },
+      { label: (typeof t==='function'?t('cancel'):'Скасувати'), cls: 'btn-s', action: 'cancel' },
       { label: d.board ? 'Відкрити дошку' : '—', cls: 'btn-s', action: d.board ? 'open-diary-board' : 'cancel' },
       { label: 'Зберегти', cls: 'btn-p', action: 'save-diary' }
     ]);
@@ -277,7 +277,7 @@ const Actions = {
     const s = Store.get().settings;
     Modal.open('Нове тренування', `
       <div class="fg">
-        <div class="fgr full"><label>Назва</label><input id="tName" value="Тренування ${fmtDate(new Date())}"></div>
+        <div class="fgr full"><label>${(typeof I18n!=='undefined'?I18n.t('label_name','Назва'):'Назва')}</label><input id="tName" value="Тренування ${fmtDate(new Date())}"></div>
         <div class="fgr"><label>Дата</label><input type="date" id="tDate" value="${today()}"></div>
         <div class="fgr"><label>Час</label><input type="time" id="tTime" value="10:00"></div>
         <div class="fgr"><label>Тривалість (хв)</label><input type="number" id="tDur" value="${s.defaultDuration}"></div>
@@ -291,16 +291,16 @@ const Actions = {
         <div class="fgr"><label>Технічна</label><input id="tTech"></div>
         <div class="fgr"><label>Психологічна</label><input id="tPsych"></div>
         <div class="fgr full"><label>Коментар</label><textarea id="tCom"></textarea></div>
-        <div class="fgr"><label>Статус</label><select id="tSt"><option value="draft">Чернетка</option><option value="planned">Заплановане</option><option value="pinned">Закріплене</option></select></div>
+        <div class="fgr"><label>${(typeof I18n!=='undefined'?I18n.t('label_status','Статус'):'Статус')}</label><select id="tSt"><option value="draft">Чернетка</option><option value="planned">Заплановане</option><option value="pinned">Закріплене</option></select></div>
       </div>`, [
-      { label: 'Скасувати', cls: 'btn-s', action: 'cancel' },
+      { label: (typeof t==='function'?t('cancel'):'Скасувати'), cls: 'btn-s', action: 'cancel' },
       { label: 'Зберегти', cls: 'btn-p', action: 'create-training' }
     ]);
   },
 
   createTraining() {
     const name = document.getElementById('tName')?.value?.trim();
-    if (!name) { Toast.show('Вкажіть назву', 'warn'); return; }
+    if (!name) { Toast.show((typeof I18n!=='undefined'?I18n.t('toast_need_name','Вкажіть назву'):'Вкажіть назву'), 'warn'); return; }
     const structure = [
       { id: uid(), title: 'Розминка', type: 'warmup', duration: 15, intensity: 3 },
       { id: uid(), title: 'Активація', type: 'activation', duration: 10, intensity: 4 },
@@ -346,14 +346,14 @@ const Actions = {
     const total = (t.structure || []).reduce((a, b) => a + (b.duration || 0), 0);
     Modal.open('Редагування тренування', `
       <div class="fg">
-        <div class="fgr full"><label>Назва</label><input id="teName" value="${sanitize(t.name)}"></div>
+        <div class="fgr full"><label>${(typeof I18n!=='undefined'?I18n.t('label_name','Назва'):'Назва')}</label><input id="teName" value="${sanitize(t.name)}"></div>
         <div class="fgr"><label>Дата</label><input type="date" id="teDate" value="${t.date}"></div>
         <div class="fgr"><label>Час</label><input type="time" id="teTime" value="${t.time || ''}"></div>
-        <div class="fgr"><label>Статус</label><select id="teSt">
+        <div class="fgr"><label>${(typeof I18n!=='undefined'?I18n.t('label_status','Статус'):'Статус')}</label><select id="teSt">
           ${['draft','planned','done','pinned','cancelled'].map(s => `<option value="${s}" ${t.status===s?'selected':''}>${s}</option>`).join('')}
         </select></div>
         <div class="fgr"><label>RPE</label><input type="number" id="teInt" value="${t.intensity || 6}" min="1" max="10"></div>
-        <div class="fgr full"><label>Мета</label><input id="teGoal" value="${sanitize(t.mainGoal || '')}"></div>
+        <div class="fgr full"><label>${(typeof I18n!=='undefined'?I18n.t('label_goal','Мета'):'Мета')}</label><input id="teGoal" value="${sanitize(t.mainGoal || '')}"></div>
         <div class="fgr full"><label>Коментар</label><textarea id="teCom">${sanitize(t.comment || '')}</textarea></div>
         <div class="fgr full"><label><input type="checkbox" id="teAttachBoard"> ${t.board ? 'Оновити прикріплену дошку з поточної' : 'Прикріпити поточну дошку до тренування'}</label></div>
         ${t.board ? '<p class="note-sm">До тренування вже прикріплена дошка (' + (t.board.objects||[]).length + ' об\'єктів).</p>' : ''}
@@ -366,7 +366,7 @@ const Actions = {
           return `<button class="btn btn-s btn-sm" data-add-block="${id}:${n}:${d}">+ ${n}</button>`;
         }).join('')}
       </div>`, [
-      { label: 'Скасувати', cls: 'btn-s', action: 'cancel' },
+      { label: (typeof t==='function'?t('cancel'):'Скасувати'), cls: 'btn-s', action: 'cancel' },
       { label: 'Відвідування', cls: 'btn-s', action: 'open-attendance' },
       { label: 'На дошку', cls: 'btn-s', action: 'open-training-board' },
       { label: 'Зберегти', cls: 'btn-p', action: 'save-training' }
@@ -451,7 +451,7 @@ const Actions = {
     }
     StorageManager.save();
     Modal.close();
-    Toast.show('Збережено', 'ok');
+    Toast.show(typeof t==='function'?t('save'):'Збережено', 'ok');
     App.renderCurrent();
   },
 
@@ -482,28 +482,28 @@ const Actions = {
   newPlayer() {
     Modal.open('Новий гравець', `
       <div class="fg">
-        <div class="fgr"><label>Ім\'я</label><input id="plF"></div>
-        <div class="fgr"><label>Прізвище</label><input id="plL"></div>
-        <div class="fgr"><label>Номер</label><input type="number" id="plN" min="1" max="99"></div>
-        <div class="fgr"><label>Позиція</label><select id="plP">${['GK','CB','LB','RB','DM','CM','AM','LW','RW','ST'].map(p=>`<option>${p}</option>`).join('')}</select></div>
-        <div class="fgr"><label>Вік</label><input type="number" id="plA" value="24"></div>
-        <div class="fgr"><label>Статус</label><select id="plS">
-          <option value="available">Здоровий</option>
-          <option value="injured">Травмований</option>
-          <option value="rehab">Відновлення</option>
+        <div class="fgr"><label>${(typeof I18n!=='undefined'?I18n.t('label_first','Ім’я'):'Ім\u2019я')}</label><input id="plF"></div>
+        <div class="fgr"><label>${(typeof I18n!=='undefined'?I18n.t('label_last','Прізвище'):'Прізвище')}</label><input id="plL"></div>
+        <div class="fgr"><label>${(typeof I18n!=='undefined'?I18n.t('label_number','Номер'):'Номер')}</label><input type="number" id="plN" min="1" max="99"></div>
+        <div class="fgr"><label>${(typeof I18n!=='undefined'?I18n.t('label_position','Позиція'):'Позиція')}</label><select id="plP">${['GK','CB','LB','RB','DM','CM','AM','LW','RW','ST'].map(p=>`<option>${p}</option>`).join('')}</select></div>
+        <div class="fgr"><label>${(typeof I18n!=='undefined'?I18n.t('label_age','Вік'):'Вік')}</label><input type="number" id="plA" value="24"></div>
+        <div class="fgr"><label>${(typeof I18n!=='undefined'?I18n.t('label_status','Статус'):'Статус')}</label><select id="plS">
+          <option value="available">${(typeof I18n!=='undefined'?I18n.t('healthy','Здоровий'):'Здоровий')}</option>
+          <option value="injured">${(typeof I18n!=='undefined'?I18n.t('status_injured','Травмований'):'Травмований')}</option>
+          <option value="rehab">${(typeof I18n!=='undefined'?I18n.t('status_rehab','Відновлення'):'Відновлення')}</option>
           <option value="suspended">Дискваліфікація</option>
           <option value="unavailable">Недоступний</option>
         </select></div>
-        <div class="fgr"><label>Стан %</label><input type="number" id="plC" value="90" min="0" max="100"></div>
-        <div class="fgr"><label>Готовність %</label><input type="number" id="plR" value="95" min="0" max="100"></div>
-        <div class="fgr"><label>Група</label><select id="plG"><option value="main">Основний</option><option value="reserve">Резерв</option><option value="gk">Воротарі</option></select></div>
-        <div class="fgr full"><label class="chk-label"><input type="checkbox" id="plCap"> Капітан команди</label></div>
-        <div class="fgr"><label>Дата народження</label><input type="date" id="plBirth"></div>
-        <div class="fgr"><label>Telegram (@нік)</label><input id="plTg" placeholder="@username" autocomplete="off"></div>
-        <div class="fgr"><label>Телефон</label><input id="plPhone" type="tel" placeholder="+49..." autocomplete="off"></div>
-        <div class="fgr full"><label>Примітки</label><textarea id="plNo"></textarea></div>
+        <div class="fgr"><label>${(typeof I18n!=='undefined'?I18n.t('label_condition','Стан %'):'Стан %')}</label><input type="number" id="plC" value="90" min="0" max="100"></div>
+        <div class="fgr"><label>${(typeof I18n!=='undefined'?I18n.t('label_readiness','Готовність %'):'Готовність %')}</label><input type="number" id="plR" value="95" min="0" max="100"></div>
+        <div class="fgr"><label>${(typeof I18n!=='undefined'?I18n.t('label_group','Група'):'Група')}</label><select id="plG"><option value="main">${(typeof I18n!=='undefined'?I18n.t('group_main','Основний'):'Основний')}</option><option value="reserve">${(typeof I18n!=='undefined'?I18n.t('group_reserve','Резерв'):'Резерв')}</option><option value="gk">${(typeof I18n!=='undefined'?I18n.t('group_gk','Воротарі'):'Воротарі')}</option></select></div>
+        <div class="fgr full"><label class="chk-label"><input type="checkbox" id="plCap"> ${(typeof I18n!=='undefined'?I18n.t('label_captain','Капітан команди'):'Капітан команди')}</label></div>
+        <div class="fgr"><label>${(typeof I18n!=='undefined'?I18n.t('label_birth','Дата народження'):'Дата народження')}</label><input type="date" id="plBirth"></div>
+        <div class="fgr"><label>${(typeof I18n!=='undefined'?I18n.t('label_telegram','Telegram'):'Telegram')}</label><input id="plTg" placeholder="@username" autocomplete="off"></div>
+        <div class="fgr"><label>${(typeof I18n!=='undefined'?I18n.t('label_phone','Телефон'):'Телефон')}</label><input id="plPhone" type="tel" placeholder="+49..." autocomplete="off"></div>
+        <div class="fgr full"><label>${(typeof I18n!=='undefined'?I18n.t('label_notes','Примітки'):'Примітки')}</label><textarea id="plNo"></textarea></div>
       </div>`, [
-      { label: 'Скасувати', cls: 'btn-s', action: 'cancel' },
+      { label: (typeof t==='function'?t('cancel'):'Скасувати'), cls: 'btn-s', action: 'cancel' },
       { label: 'Додати', cls: 'btn-p', action: 'create-player' }
     ]);
   },
@@ -534,7 +534,7 @@ const Actions = {
     });
     StorageManager.save();
     Modal.close();
-    Toast.show('Гравця додано', 'ok');
+    Toast.show((typeof I18n!=='undefined'?I18n.t('toast_player_added','Гравця додано'):'Гравця додано'), 'ok');
     App.renderCurrent();
   },
 
@@ -547,12 +547,12 @@ const Actions = {
     const stRehab = (st === 'rehab' || st === 'recovery');
     Modal.open('Редагування гравця', `
       <div class="fg">
-        <div class="fgr"><label>Ім\'я</label><input id="peF" value="${sanitize(p.firstName)}"></div>
-        <div class="fgr"><label>Прізвище</label><input id="peL" value="${sanitize(p.lastName)}"></div>
-        <div class="fgr"><label>Номер</label><input type="number" id="peN" value="${p.number}"></div>
-        <div class="fgr"><label>Позиція</label><select id="peP">${['GK','CB','LB','RB','DM','CM','AM','LW','RW','ST'].map(pos=>`<option ${p.position===pos?'selected':''}>${pos}</option>`).join('')}</select></div>
-        <div class="fgr"><label>Вік</label><input type="number" id="peA" value="${p.age}"></div>
-        <div class="fgr"><label>Статус здоров\'я</label><select id="peS">
+        <div class="fgr"><label>${(typeof I18n!=='undefined'?I18n.t('label_first','Ім’я'):'Ім\u2019я')}</label><input id="peF" value="${sanitize(p.firstName)}"></div>
+        <div class="fgr"><label>${(typeof I18n!=='undefined'?I18n.t('label_last','Прізвище'):'Прізвище')}</label><input id="peL" value="${sanitize(p.lastName)}"></div>
+        <div class="fgr"><label>${(typeof I18n!=='undefined'?I18n.t('label_number','Номер'):'Номер')}</label><input type="number" id="peN" value="${p.number}"></div>
+        <div class="fgr"><label>${(typeof I18n!=='undefined'?I18n.t('label_position','Позиція'):'Позиція')}</label><select id="peP">${['GK','CB','LB','RB','DM','CM','AM','LW','RW','ST'].map(pos=>`<option ${p.position===pos?'selected':''}>${pos}</option>`).join('')}</select></div>
+        <div class="fgr"><label>${(typeof I18n!=='undefined'?I18n.t('label_age','Вік'):'Вік')}</label><input type="number" id="peA" value="${p.age}"></div>
+        <div class="fgr"><label>${(typeof I18n!=='undefined'?I18n.t('label_health','Статус здоров’я'):'Статус здоров\u2019я')}</label><select id="peS">
           <option value="available" ${stHealthy?'selected':''}>Здоровий</option>
           <option value="injured" ${stInj?'selected':''}>Травмований</option>
           <option value="rehab" ${stRehab?'selected':''}>Відновлення</option>
@@ -563,26 +563,26 @@ const Actions = {
           <input type="checkbox" id="peCap" ${p.isCaptain?'checked':''} style="width:18px;height:18px">
           <span><strong>Капітан команди (C)</strong></span>
         </label></div>
-        <div class="fgr"><label>Стан %</label><input type="number" id="peC" value="${p.condition}"></div>
-        <div class="fgr"><label>Готовність %</label><input type="number" id="peR" value="${p.readiness}"></div>
+        <div class="fgr"><label>${(typeof I18n!=='undefined'?I18n.t('label_condition','Стан %'):'Стан %')}</label><input type="number" id="peC" value="${p.condition}"></div>
+        <div class="fgr"><label>${(typeof I18n!=='undefined'?I18n.t('label_readiness','Готовність %'):'Готовність %')}</label><input type="number" id="peR" value="${p.readiness}"></div>
         <div class="fgr"><label>Load (0-10)</label><input type="number" id="peLoad" value="${p.load||0}" min="0" max="10"></div>
-        <div class="fgr"><label>Група</label><select id="peG">
+        <div class="fgr"><label>${(typeof I18n!=='undefined'?I18n.t('label_group','Група'):'Група')}</label><select id="peG">
           <option value="main" ${p.group==='main'?'selected':''}>Основний</option>
           <option value="reserve" ${p.group==='reserve'?'selected':''}>Резерв</option>
           <option value="gk" ${p.group==='gk'?'selected':''}>Воротарі</option>
         </select></div>
-        <div class="fgr"><label>Дата народження</label><input type="date" id="peBirth" value="${sanitize(p.birthDate||'')}"></div>
+        <div class="fgr"><label>${(typeof I18n!=='undefined'?I18n.t('label_birth','Дата народження'):'Дата народження')}</label><input type="date" id="peBirth" value="${sanitize(p.birthDate||'')}"></div>
         <div class="fgr full"><label>Фото гравця (URL або data)</label>
           <input id="pePhoto" type="url" placeholder="https://… або завантажте файл нижче" value="${sanitize(p.photoUrl||'')}">
           <input id="pePhotoFile" type="file" accept="image/*" style="margin-top:6px;font-size:12px">
           ${p.photoUrl ? '<img src="'+sanitize(p.photoUrl)+'" alt="" style="max-height:64px;margin-top:6px;border-radius:8px">' : ''}
         </div>
-        <div class="fgr"><label>Telegram (@нік)</label><input id="peTg" value="${sanitize(p.telegramUsername||'')}" placeholder="@username" autocomplete="off"></div>
-        <div class="fgr"><label>Телефон</label><input id="pePhone" type="tel" value="${sanitize(p.phone||'')}" placeholder="+49..." autocomplete="off"></div>
+        <div class="fgr"><label>${(typeof I18n!=='undefined'?I18n.t('label_telegram','Telegram'):'Telegram')}</label><input id="peTg" value="${sanitize(p.telegramUsername||'')}" placeholder="@username" autocomplete="off"></div>
+        <div class="fgr"><label>${(typeof I18n!=='undefined'?I18n.t('label_phone','Телефон'):'Телефон')}</label><input id="pePhone" type="tel" value="${sanitize(p.phone||'')}" placeholder="+49..." autocomplete="off"></div>
         <div class="fgr full"><label>Примітки / Індивідуальна програма</label><textarea id="peNo">${sanitize(p.notes||'')}</textarea></div>
         <p class="note-sm" style="grid-column:1/-1;margin:0">Telegram-нік потрібен для майбутнього входу гравця / персоналу в Mini App.</p>
       </div>`, [
-      { label: 'Скасувати', cls: 'btn-s', action: 'cancel' },
+      { label: (typeof t==='function'?t('cancel'):'Скасувати'), cls: 'btn-s', action: 'cancel' },
       { label: 'Зберегти', cls: 'btn-p', action: 'save-player' }
     ]);
     const btn = document.querySelector('[data-modal-action="save-player"]');
@@ -724,7 +724,7 @@ const Actions = {
       </div>
       <div class="att-list">${rows || '<div class="es">Немає гравців у складі</div>'}</div>
     `, [
-      { label: 'Скасувати', cls: 'btn-s', action: 'cancel' },
+      { label: (typeof t==='function'?t('cancel'):'Скасувати'), cls: 'btn-s', action: 'cancel' },
       { label: 'Зберегти відвідування', cls: 'btn-p', action: 'save-attendance' }
     ]);
     const btn = document.querySelector('[data-modal-action="save-attendance"]');
@@ -783,16 +783,16 @@ const Actions = {
   newExercise() {
     Modal.open('Нова вправа', `
       <div class="fg">
-        <div class="fgr full"><label>Назва</label><input id="exN"></div>
+        <div class="fgr full"><label>${(typeof I18n!=='undefined'?I18n.t('label_name','Назва'):'Назва')}</label><input id="exN"></div>
         <div class="fgr full"><label>Опис</label><textarea id="exD"></textarea></div>
-        <div class="fgr"><label>Категорія</label><select id="exC">
+        <div class="fgr"><label>${(typeof I18n!=='undefined'?I18n.t('label_category','Категорія'):'Категорія')}</label><select id="exC">
           <option value="warmup">Warm-up</option><option value="passing">Passing</option>
           <option value="possession">Possession</option><option value="finishing">Finishing</option>
           <option value="defending">Defending</option><option value="pressing">Pressing</option>
           <option value="transition">Transition</option><option value="buildup">Build-up</option>
           <option value="goalkeeping">Goalkeeping</option><option value="conditioning">Conditioning</option>
         </select></div>
-        <div class="fgr"><label>Мета</label><input id="exO"></div>
+        <div class="fgr"><label>${(typeof I18n!=='undefined'?I18n.t('label_goal','Мета'):'Мета')}</label><input id="exO"></div>
         <div class="fgr"><label>Гравців</label><input type="number" id="exP" value="10"></div>
         <div class="fgr"><label>Зона</label><input id="exA" value="Половина"></div>
         <div class="fgr"><label>Тривалість</label><input type="number" id="exDu" value="15"></div>
@@ -801,14 +801,14 @@ const Actions = {
         <div class="fgr full"><label>Інструкції</label><textarea id="exIn"></textarea></div>
         <div class="fgr full"><label>Coaching Points</label><textarea id="exCp"></textarea></div>
       </div>`, [
-      { label: 'Скасувати', cls: 'btn-s', action: 'cancel' },
+      { label: (typeof t==='function'?t('cancel'):'Скасувати'), cls: 'btn-s', action: 'cancel' },
       { label: 'Створити', cls: 'btn-p', action: 'create-exercise' }
     ]);
   },
 
   createExercise() {
     const name = document.getElementById('exN')?.value?.trim();
-    if (!name) { Toast.show('Вкажіть назву', 'warn'); return; }
+    if (!name) { Toast.show((typeof I18n!=='undefined'?I18n.t('toast_need_name','Вкажіть назву'):'Вкажіть назву'), 'warn'); return; }
     Store.get().exercises.push({
       id: uid(), name, description: document.getElementById('exD')?.value,
       category: document.getElementById('exC')?.value, objective: document.getElementById('exO')?.value,
@@ -843,7 +843,7 @@ const Actions = {
         <button class="btn btn-d btn-sm" data-del-ex="${e.id}">Видалити</button>
       </div>`, [{ label: 'Закрити', cls: 'btn-s', action: 'cancel' }]);
     document.getElementById('modalBody').querySelector('[data-del-ex]')?.addEventListener('click', () => {
-      Modal.confirm('Видалити вправу?', () => {
+      Modal.confirm((typeof t==='function'?t('confirm_del_exercise'):'Видалити вправу?'), () => {
         Store.get().exercises = Store.get().exercises.filter(x => x.id !== e.id);
         StorageManager.save(); Modal.close(); App.renderCurrent();
       });
@@ -866,7 +866,7 @@ const Actions = {
         <div class="fgr full"><label>Передматчеві нотатки</label><textarea id="mPre"></textarea></div>
         <div class="fgr full"><label>Післяматчевий аналіз</label><textarea id="mPost"></textarea></div>
       </div>`, [
-      { label: 'Скасувати', cls: 'btn-s', action: 'cancel' },
+      { label: (typeof t==='function'?t('cancel'):'Скасувати'), cls: 'btn-s', action: 'cancel' },
       { label: 'Створити', cls: 'btn-p', action: 'create-match' }
     ]);
   },
@@ -915,7 +915,7 @@ const Actions = {
   newEvent() {
     Modal.open('Нова подія', `
       <div class="fg">
-        <div class="fgr full"><label>Назва</label><input id="evN"></div>
+        <div class="fgr full"><label>${(typeof I18n!=='undefined'?I18n.t('label_name','Назва'):'Назва')}</label><input id="evN"></div>
         <div class="fgr"><label>Дата</label><input type="date" id="evD" value="${Store.get().ui.selectedDay || today()}"></div>
         <div class="fgr"><label>Час</label><input type="time" id="evT" value="10:00"></div>
         <div class="fgr"><label>Тип</label><select id="evTy">
@@ -925,14 +925,14 @@ const Actions = {
         </select></div>
         <div class="fgr full"><label>Нотатки</label><textarea id="evNo"></textarea></div>
       </div>`, [
-      { label: 'Скасувати', cls: 'btn-s', action: 'cancel' },
+      { label: (typeof t==='function'?t('cancel'):'Скасувати'), cls: 'btn-s', action: 'cancel' },
       { label: 'Створити', cls: 'btn-p', action: 'create-event' }
     ]);
   },
 
   createEvent() {
     const title = document.getElementById('evN')?.value?.trim();
-    if (!title) { Toast.show('Вкажіть назву', 'warn'); return; }
+    if (!title) { Toast.show((typeof I18n!=='undefined'?I18n.t('toast_need_name','Вкажіть назву'):'Вкажіть назву'), 'warn'); return; }
     Store.get().calendar.push({
       id: uid(), title, date: document.getElementById('evD')?.value || today(),
       time: document.getElementById('evT')?.value, type: document.getElementById('evTy')?.value,

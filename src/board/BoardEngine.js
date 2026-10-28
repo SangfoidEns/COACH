@@ -334,7 +334,7 @@ const BoardEngine = {
       if (snap.camera) this.camera = snap.camera;
     } catch (_) {}
     this.render();
-    Toast.show('↩ Скасовано');
+    Toast.show(typeof t==='function'?t('toast_undo'):'↩ Скасовано');
   },
 
   redo() {
@@ -347,7 +347,7 @@ const BoardEngine = {
       if (snap.camera) this.camera = snap.camera;
     } catch (_) {}
     this.render();
-    Toast.show('↪ Повторено');
+    Toast.show(typeof t==='function'?t('toast_redo'):'↪ Повторено');
   },
 
   /* ── FULLSCREEN / BOARD-ONLY MODE ── */
@@ -374,7 +374,7 @@ const BoardEngine = {
         this.render && this.render();
       } catch (_) {}
     }, 100);
-    try { Toast.show('Повний екран · ⛶ або ✕ для виходу', 'ok'); } catch (_) {}
+    try { Toast.show(typeof t==='function'?t('toast_fs'):'Повний екран · ⛶ або ✕ для виходу', 'ok'); } catch (_) {}
   },
 
   exitFullscreen() {
@@ -983,7 +983,7 @@ const BoardEngine = {
   },
 
   clear() {
-    Modal.confirm('Очистити дошку?', () => {
+    Modal.confirm((typeof t==='function'?t('confirm_clear_board'):'Очистити дошку?'), () => {
       Store.get().activeBoard.objects = [];
       Store.get().activeBoard.selectedId = null;
       this.polygonPoints = [];
@@ -1031,7 +1031,7 @@ const BoardEngine = {
          ⬇ Усіх зі списку на лавку (${available.length})
        </button>
        <div style="max-height:45vh;overflow:auto">${list}</div>`,
-      [{ label: 'Скасувати', cls: 'btn-s', action: 'cancel' }]
+      [{ label: (typeof t==='function'?t('cancel'):'Скасувати'), cls: 'btn-s', action: 'cancel' }]
     );
     const self = this;
     setTimeout(() => {
@@ -1247,7 +1247,7 @@ const BoardEngine = {
     const nInj = benchList.filter(isInj).length;
     const nReh = benchList.filter(isRehab).length;
     const nRes = benchList.filter(isRes).length;
-    Toast.show('Основа 11 · Лавка ' + benchList.length + (nRes ? ' · рез. ' + nRes : '') + (nInj + nReh ? ' · мед. ' + (nInj + nReh) : ''), 'ok');
+    Toast.show((typeof t==='function'?t('starters_bench_toast'):'Основа')+' 11 · '+(typeof t==='function'?t('bench_label'):'Лавка')+' ' + benchList.length + (nRes ? ' · рез. ' + nRes : '') + (nInj + nReh ? ' · мед. ' + (nInj + nReh) : ''), 'ok');
   },
 
   saveBoard() {
@@ -1854,7 +1854,7 @@ const BoardEngine = {
     const bench = (s.activeBoard.objects || []).filter(o => o.onBench && (o.type === 'player' || o.team === 'own'));
     const pending = this.pendingFromBenchId;
     if (!bench.length) {
-      list.innerHTML = '<div class="bench-empty">Лавка порожня<br><span class="bench-hint">Перетягніть фішку з поля сюди</span></div>';
+      list.innerHTML = '<div class="bench-empty">'+(typeof t==='function'?t('bench_empty'):'Лавка порожня')+'<br><span class="bench-hint">'+(typeof t==='function'?t('bench_hint'):'Перетягніть фішку з поля сюди')+'</span></div>';
       return;
     }
     const chipHtml = (o) => {
@@ -2171,10 +2171,15 @@ const BoardEngine = {
         });
       });
       el.addEventListener('contextmenu', ev => {
+        // Long-press / right-click must NOT delete — only select.
+        // Delete: кнопка 🗑 на панелі інструментів.
         ev.preventDefault();
-        s.activeBoard.objects = s.activeBoard.objects.filter(x => x.id !== el.dataset.id);
-        this.pushHistory();
-        this.render();
+        ev.stopPropagation();
+        try {
+          const ab = Store.get().activeBoard;
+          if (ab) ab.selectedId = el.dataset.id;
+          this.renderTokens && this.renderTokens();
+        } catch (_) {}
       });
     });
   },
@@ -2459,18 +2464,18 @@ const BoardEngine = {
       top.className = 'btb btb-top';
       top.innerHTML = `
       <div class="tg btb-chrome">
-        <button type="button" class="tb tb-exit" data-action="exit-board" title="Вихід з дошки">✕</button>
-        <button type="button" class="tb tb-fs" data-action="toggle-fullscreen" title="Повний екран">⛶</button>
-        <button type="button" class="tb" data-action="zoom-out" title="Зменшити">−</button>
-        <button type="button" class="tb" data-action="zoom-fit" title="Вписати поле">⊡</button>
-        <button type="button" class="tb" data-action="zoom-in" title="Збільшити">+</button>
-        <button class="tb" data-action="toggle-present" title="Режим показу">▶ Показ</button>
+        <button type="button" class="tb tb-exit" data-action="exit-board" title="${typeof t==='function'?t('board_exit','Вихід з дошки'):'Вихід з дошки'}">✕</button>
+        <button type="button" class="tb tb-fs" data-action="toggle-fullscreen" title="${typeof t==='function'?t('board_fullscreen','Повний екран'):'Повний екран'}">⛶</button>
+        <button type="button" class="tb" data-action="zoom-out" title="${typeof t==='function'?t('board_zoom_out','Зменшити'):'Зменшити'}">−</button>
+        <button type="button" class="tb" data-action="zoom-fit" title="${typeof t==='function'?t('board_zoom_fit','Вписати поле'):'Вписати поле'}">⊡</button>
+        <button type="button" class="tb" data-action="zoom-in" title="${typeof t==='function'?t('board_zoom_in','Збільшити'):'Збільшити'}">+</button>
+        <button class="tb" data-action="toggle-present" title="${typeof t==='function'?t('board_present','Режим показу'):'Режим показу'}">▶ ${typeof t==='function'?t('board_present','Показ'):'Показ'}</button>
         <span class="btb-spacer"></span>
-        <button class="tb" data-action="board-undo" title="Скасувати">↩</button>
-        <button class="tb" data-action="board-redo" title="Повторити">↪</button>
-        <button class="tb" data-action="board-clear" title="Очистити">🗑</button>
-        <button class="tb" data-action="board-save" title="Зберегти схему">💾</button>
-        <button class="tb" data-action="save-board-diary" title="Зберегти дошку в щоденник">📓</button>
+        <button class="tb" data-action="board-undo" title="${typeof t==='function'?t('board_undo','Скасувати'):'Скасувати'}">↩</button>
+        <button class="tb" data-action="board-redo" title="${typeof t==='function'?t('board_redo','Повторити'):'Повторити'}">↪</button>
+        <button class="tb" data-action="board-clear" title="${typeof t==='function'?t('board_clear','Очистити'):'Очистити'}">🗑</button>
+        <button class="tb" data-action="board-save" title="${typeof t==='function'?t('board_save','Зберегти схему'):'Зберегти схему'}">💾</button>
+        <button class="tb" data-action="save-board-diary" title="${typeof t==='function'?t('board_save_diary','Зберегти дошку в щоденник'):'Зберегти дошку в щоденник'}">📓</button>
       </div>`;
     }
 
@@ -2479,30 +2484,30 @@ const BoardEngine = {
       bottom.className = 'btb btb-bottom';
       const trayOpen = !!ab.toolsTrayOpen;
       bottom.innerHTML = `
-      <div class="btb-dock" role="toolbar" aria-label="Інструменти дошки">
+      <div class="btb-dock" role="toolbar" aria-label="${typeof t==='function'?t('board_tools'):'Інструменти дошки'}">
         <div class="btb-primary">
-          <button class="tb ${tool==='select'?'on':''}" data-tool="select" title="Вибір">↖</button>
-          <button class="tb ${tool==='player'?'on':''}" data-tool="player" title="Гравець">●</button>
-          <button class="tb ${tool==='opponent'?'on':''}" data-tool="opponent" title="Суперник">○</button>
-          <button class="tb ${tool==='ball'?'on':''}" data-tool="ball" title="М'яч">⚽</button>
-          <button class="tb ${tool==='pass'?'on':''}" data-tool="pass" title="Пас">⇒</button>
-          <button class="tb ${tool==='run'?'on':''}" data-tool="run" title="Рух">⇢</button>
-          <button class="tb ${tool==='dribble'?'on':''}" data-tool="dribble" title="Ведення">∿</button>
-          <button type="button" class="tb tb-palette-toggle" data-action="toggle-palette" title="Палітра">🎨</button>
-          <button type="button" class="tb tb-del" data-action="board-delete-selected" title="Видалити вибране">🗑</button>
-          <button type="button" class="tb tb-more ${trayOpen?'on':''}" data-action="toggle-tools-tray" title="Більше інструментів" aria-expanded="${trayOpen?'true':'false'}">
+          <button class="tb ${tool==='select'?'on':''}" data-tool="select" title="${typeof t==='function'?t('tool_select','Вибір'):'Вибір'}">↖</button>
+          <button class="tb ${tool==='player'?'on':''}" data-tool="player" title="${typeof t==='function'?t('tool_player','Гравець'):'Гравець'}">●</button>
+          <button class="tb ${tool==='opponent'?'on':''}" data-tool="opponent" title="${typeof t==='function'?t('tool_opponent','Суперник'):'Суперник'}">○</button>
+          <button class="tb ${tool==='ball'?'on':''}" data-tool="ball" title="${typeof t==='function'?t('tool_ball','М\u2019яч'):'М\u2019яч'}">⚽</button>
+          <button class="tb ${tool==='pass'?'on':''}" data-tool="pass" title="${typeof t==='function'?t('tool_pass','Пас'):'Пас'}">⇒</button>
+          <button class="tb ${tool==='run'?'on':''}" data-tool="run" title="${typeof t==='function'?t('tool_run','Рух'):'Рух'}">⇢</button>
+          <button class="tb ${tool==='dribble'?'on':''}" data-tool="dribble" title="${typeof t==='function'?t('tool_dribble','Ведення'):'Ведення'}">∿</button>
+          <button type="button" class="tb tb-palette-toggle" data-action="toggle-palette" title="${typeof t==='function'?t('tool_select','Палітра'):'Палітра'}">🎨</button>
+          <button type="button" class="tb tb-del" data-action="board-delete-selected" title="${typeof t==='function'?t('tool_delete'):'Видалити вибране'}">🗑</button>
+          <button type="button" class="tb tb-more ${trayOpen?'on':''}" data-action="toggle-tools-tray" title="${typeof t==='function'?t('nav_more','Більше'):'Більше'}" aria-expanded="${trayOpen?'true':'false'}">
             <span class="tb-more-icon">${trayOpen ? '✕' : '⊕'}</span>
           </button>
         </div>
         <div class="palette-swatches ${paletteOpen ? 'open' : ''}" id="paletteSwatches">
-          <button type="button" class="tb color-swatch ${drawCol==='#ecf0f1'?'on':''}" data-action="set-draw-color" data-color="#ecf0f1" style="background:#ecf0f1" title="Білий"></button>
-          <button type="button" class="tb color-swatch ${drawCol==='#3498db'?'on':''}" data-action="set-draw-color" data-color="#3498db" style="background:#3498db" title="Синій"></button>
-          <button type="button" class="tb color-swatch ${drawCol==='#2ecc71'?'on':''}" data-action="set-draw-color" data-color="#2ecc71" style="background:#2ecc71" title="Зелений"></button>
-          <button type="button" class="tb color-swatch ${drawCol==='#f1c40f'?'on':''}" data-action="set-draw-color" data-color="#f1c40f" style="background:#f1c40f" title="Жовтий"></button>
-          <button type="button" class="tb color-swatch ${drawCol==='#e67e22'?'on':''}" data-action="set-draw-color" data-color="#e67e22" style="background:#e67e22" title="Помаранчевий"></button>
-          <button type="button" class="tb color-swatch ${drawCol==='#e74c3c'?'on':''}" data-action="set-draw-color" data-color="#e74c3c" style="background:#e74c3c" title="Червоний"></button>
-          <button type="button" class="tb color-swatch ${drawCol==='#9b59b6'?'on':''}" data-action="set-draw-color" data-color="#9b59b6" style="background:#9b59b6" title="Фіолетовий"></button>
-          <button type="button" class="tb color-swatch ${drawCol==='#000000'?'on':''}" data-action="set-draw-color" data-color="#000000" style="background:#000" title="Чорний"></button>
+          <button type="button" class="tb color-swatch ${drawCol==='#ecf0f1'?'on':''}" data-action="set-draw-color" data-color="#ecf0f1" style="background:#ecf0f1" title="${typeof t==='function'?t('color_white'):'Білий'}"></button>
+          <button type="button" class="tb color-swatch ${drawCol==='#3498db'?'on':''}" data-action="set-draw-color" data-color="#3498db" style="background:#3498db" title="${typeof t==='function'?t('color_blue'):'Синій'}"></button>
+          <button type="button" class="tb color-swatch ${drawCol==='#2ecc71'?'on':''}" data-action="set-draw-color" data-color="#2ecc71" style="background:#2ecc71" title="${typeof t==='function'?t('color_green'):'Зелений'}"></button>
+          <button type="button" class="tb color-swatch ${drawCol==='#f1c40f'?'on':''}" data-action="set-draw-color" data-color="#f1c40f" style="background:#f1c40f" title="${typeof t==='function'?t('color_yellow'):'Жовтий'}"></button>
+          <button type="button" class="tb color-swatch ${drawCol==='#e67e22'?'on':''}" data-action="set-draw-color" data-color="#e67e22" style="background:#e67e22" title="${typeof t==='function'?t('color_orange'):'Помаранчевий'}"></button>
+          <button type="button" class="tb color-swatch ${drawCol==='#e74c3c'?'on':''}" data-action="set-draw-color" data-color="#e74c3c" style="background:#e74c3c" title="${typeof t==='function'?t('color_red'):'Червоний'}"></button>
+          <button type="button" class="tb color-swatch ${drawCol==='#9b59b6'?'on':''}" data-action="set-draw-color" data-color="#9b59b6" style="background:#9b59b6" title="${typeof t==='function'?t('color_purple'):'Фіолетовий'}"></button>
+          <button type="button" class="tb color-swatch ${drawCol==='#000000'?'on':''}" data-action="set-draw-color" data-color="#000000" style="background:#000" title="${typeof t==='function'?t('color_black'):'Чорний'}"></button>
         </div>
       </div>
       <div class="btb-tray ${trayOpen?'open':''}" id="btbToolsTray" aria-hidden="${trayOpen?'false':'true'}">

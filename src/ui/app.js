@@ -2,12 +2,15 @@
 const App = {
   init() {
     try { (typeof CoachTools !== "undefined" && CoachTools.loadCustomArtifacts && CoachTools.loadCustomArtifacts());
+    try { if (typeof ClubBot !== 'undefined') ClubBot.startScheduler(); } catch (_) {}
     TelegramManager.init(); } catch (e) { console.warn('Telegram', e); }
     try { StorageManager.init(); } catch (e) {
       console.error('Storage init failed', e);
       try { localStorage.removeItem(STORAGE_KEY); localStorage.removeItem(BACKUP_KEY); } catch (_) {}
       try { StorageManager.init(); } catch (e2) { console.error(e2); }
     }
+    try { if (typeof I18n !== 'undefined' && I18n.initFromStore) I18n.initFromStore();
+    try { if (typeof StorageManager !== 'undefined' && StorageManager.applyRosterMigrationIfAny) StorageManager.applyRosterMigrationIfAny(); } catch (_) {} } catch (e) { console.warn('i18n', e); }
     try { this.applyBranding(); } catch (e) { console.warn('branding', e); }
     try { this.applyThemeMode((Store.get().settings || {}).theme || 'dark'); } catch (e) { console.warn('theme', e); }
     this.bindEvents();
@@ -313,14 +316,15 @@ const App = {
     /* achievements + attendance via CoachTools */
     const s = (typeof Store !== 'undefined' && Store.get()) || {};
     const set = s.settings || {};
-    const name = set.coachName
-      || ((typeof AuthManager !== 'undefined' && AuthManager.displayName) ? AuthManager.displayName() : 'Artem Serdiuk');
-    let photo = set.coachPhoto || '';
+    const name = (set.coachName && String(set.coachName).trim()) || 'Artem Serdiuk';
+    let photo = set.coachPhoto || set.coachPhotoUrl || '';
     try {
-      if (!photo && typeof AuthManager !== 'undefined' && AuthManager.user) {
+      // Фото з Telegram лише якщо сесія — тренер (інакше підтягнеться аватар гравця)
+      const isCoachSession = typeof AuthManager !== 'undefined' && AuthManager.isCoach && AuthManager.isCoach();
+      if (!photo && isCoachSession && AuthManager.user) {
         photo = AuthManager.user.photo_url || AuthManager.user.photoUrl || '';
       }
-      if (!photo && typeof TelegramManager !== 'undefined' && TelegramManager.tg) {
+      if (!photo && isCoachSession && typeof TelegramManager !== 'undefined' && TelegramManager.tg) {
         const u = TelegramManager.tg.initDataUnsafe && TelegramManager.tg.initDataUnsafe.user;
         if (u && u.photo_url) photo = u.photo_url;
       }
@@ -1306,29 +1310,29 @@ const App = {
         <div class="tr-stat"><b>${totalMin}</b><span>хв плану</span></div>
         <div class="tr-stat"><b>${t.intensity != null ? t.intensity : '—'}</b><span>RPE план</span></div>
         <div class="tr-stat"><b>${load || '—'}</b><span>Load</span></div>
-        <div class="tr-stat"><b>${attPct != null ? attPct + '%' : '—'}</b><span>Відвідування</span></div>
+        <div class="tr-stat"><b>${attPct != null ? attPct + '%' : '—'}</b><span>' + (typeof I18n!=='undefined'?I18n.t('longpress_attendance','Відвідування'):'Відвідування') + '</span></div>
         <div class="tr-stat"><b>${rpeN ? avgRpe : '—'}</b><span>Сер. RPE</span></div>
         <div class="tr-stat"><b>${attPresent}/${attTotal || '—'}</b><span>Було</span></div>
       </div>`;
     const planBlock = `
       <div class="tg-sheet-preview tr-plan-preview">
         ${t.mainGoal ? ('<div class="tr-goal">🎯 ' + (typeof sanitize === 'function' ? sanitize(t.mainGoal) : t.mainGoal) + '</div>') : ''}
-        <div class="tr-plan-title">План тренування</div>
-        ${struct || '<div class="note-sm">Структура не задана</div>'}
+        <div class="tr-plan-title">${(typeof I18n!=='undefined'?I18n.t('scheme_training','План тренування'):'План тренування')}</div>
+        ${struct || ('<div class="note-sm">' + (typeof I18n!=='undefined'?I18n.t('no_trainings','Структура не задана'):'Структура не задана') + '</div>')}
         ${statsBlock}
       </div>`;
     const coachActions = isCoach ? `
-      <button type="button" class="tg-sheet-btn" data-sheet-act="edit" data-tid="${t.id}">✏️ Редагувати</button>
-      <button type="button" class="tg-sheet-btn" data-sheet-act="attendance" data-tid="${t.id}">✓ Відвідування</button>
-      <button type="button" class="tg-sheet-btn" data-sheet-act="dup" data-tid="${t.id}">⧉ Дубль / копія</button>
-      <button type="button" class="tg-sheet-btn" data-sheet-act="open-board" data-tid="${t.id}">⚽ Відкрити дошку</button>
-      <button type="button" class="tg-sheet-btn" data-sheet-act="attach-board" data-tid="${t.id}">📌 Прикріпити поточну дошку</button>
+      <button type="button" class="tg-sheet-btn" data-sheet-act="edit" data-tid="${t.id}">✏️ ' + (typeof I18n!=='undefined'?I18n.t('sheet_edit','Редагувати'):'Редагувати') + '</button>
+      <button type="button" class="tg-sheet-btn" data-sheet-act="attendance" data-tid="${t.id}">✓ ${(typeof I18n!=='undefined'?I18n.t('sheet_attendance','Відвідування'):'Відвідування')}</button>
+      <button type="button" class="tg-sheet-btn" data-sheet-act="dup" data-tid="${t.id}">⧉ ${(typeof I18n!=='undefined'?I18n.t('sheet_dup','Дубль / копія'):'Дубль / копія')}</button>
+      <button type="button" class="tg-sheet-btn" data-sheet-act="open-board" data-tid="${t.id}">⚽ ${(typeof I18n!=='undefined'?I18n.t('open_board','Відкрити дошку'):'Відкрити дошку')}</button>
+      <button type="button" class="tg-sheet-btn" data-sheet-act="attach-board" data-tid="${t.id}">📌 ' + (typeof I18n!=='undefined'?I18n.t('sheet_attach','Прикріпити поточну дошку'):'Прикріпити поточну дошку') + '</button>
       ${cancelled
-        ? `<button type="button" class="tg-sheet-btn" data-sheet-act="restore" data-tid="${t.id}">↩ Відновити (заплановане)</button>`
-        : `<button type="button" class="tg-sheet-btn tg-sheet-warn" data-sheet-act="cancel" data-tid="${t.id}">🚫 Скасувати тренування</button>`}
-      <button type="button" class="tg-sheet-btn tg-sheet-danger" data-sheet-act="delete" data-tid="${t.id}">🗑 Видалити</button>
+        ? `<button type="button" class="tg-sheet-btn" data-sheet-act="restore" data-tid="${t.id}">↩ ${(typeof I18n!=='undefined'?I18n.t('planned','Відновити'):'Відновити')}</button>`
+        : `<button type="button" class="tg-sheet-btn tg-sheet-warn" data-sheet-act="cancel" data-tid="${t.id}">🚫 ${(typeof I18n!=='undefined'?I18n.t('sheet_cancel_tr','Скасувати тренування'):'Скасувати тренування')}</button>`}
+      <button type="button" class="tg-sheet-btn tg-sheet-danger" data-sheet-act="delete" data-tid="${t.id}">🗑 ' + (typeof I18n!=='undefined'?I18n.t('sheet_delete','Видалити'):'Видалити') + '</button>
     ` : `
-      <button type="button" class="tg-sheet-btn" data-sheet-act="open-board" data-tid="${t.id}">⚽ Переглянути дошку</button>
+      <button type="button" class="tg-sheet-btn" data-sheet-act="open-board" data-tid="${t.id}">⚽ ${(typeof I18n!=='undefined'?I18n.t('open_board','Переглянути дошку'):'Переглянути дошку')}</button>
     `;
     sheet.innerHTML = `
       <div class="tg-sheet-handle"></div>
@@ -1336,7 +1340,7 @@ const App = {
       <div class="tg-sheet-sub">${t.date || ''} · ${Views._trStatusLabel ? Views._trStatusLabel(t.status) : t.status}</div>
       ${planBlock}
       ${coachActions}
-      <button type="button" class="tg-sheet-btn tg-sheet-cancel" data-sheet-act="close">Закрити</button>
+      <button type="button" class="tg-sheet-btn tg-sheet-cancel" data-sheet-act="close">${(typeof I18n!=='undefined'?I18n.t('close','Закрити'):'Закрити')}</button>
     `;
     sheet.className = 'tg-sheet';
     backdrop.appendChild(sheet);
@@ -1372,7 +1376,7 @@ const App = {
         return;
       }
       if (act === 'delete') {
-        return Modal.confirm('Видалити тренування назавжди?', () => {
+        return Modal.confirm(((typeof I18n!=='undefined'?I18n.t('confirm_del_training','Видалити тренування назавжди?'):'Видалити тренування назавжди?')), () => {
           Store.get().trainings = Store.get().trainings.filter(x => x.id !== tid);
           StorageManager.save();
           App.renderCurrent();
@@ -1430,12 +1434,12 @@ const App = {
       '<div class="tg-sheet-handle"></div>' +
       '<div class="tg-sheet-title">' + title + '</div>' +
       '<div class="tg-sheet-sub">' + (p.position || '') + ' · ' + (p.status || 'available') + '</div>' +
-      '<button type="button" class="tg-sheet-btn" data-psheet="edit" data-pid="' + p.id + '">✏️ Редагувати</button>' +
-      '<button type="button" class="tg-sheet-btn" data-psheet="board" data-pid="' + p.id + '">⚽ Прикріпити поточну дошку</button>' +
-      '<button type="button" class="tg-sheet-btn" data-psheet="diary" data-pid="' + p.id + '">📓 Запис у щоденник</button>' +
-      '<button type="button" class="tg-sheet-btn" data-psheet="starter" data-pid="' + p.id + '">⭐ У основу / резерв</button>' +
-      '<button type="button" class="tg-sheet-btn tg-sheet-danger" data-psheet="delete" data-pid="' + p.id + '">🗑 Видалити</button>' +
-      '<button type="button" class="tg-sheet-btn tg-sheet-cancel" data-psheet="close">Закрити</button></div>';
+      '<button type="button" class="tg-sheet-btn" data-psheet="edit" data-pid="' + p.id + '">✏️ ' + (typeof I18n!=='undefined'?I18n.t('sheet_edit','Редагувати'):'Редагувати') + '</button>' +
+      '<button type="button" class="tg-sheet-btn" data-psheet="board" data-pid="' + p.id + '">⚽ ' + (typeof I18n!=='undefined'?I18n.t('sheet_attach','Прикріпити поточну дошку'):'Прикріпити поточну дошку') + '</button>' +
+      '<button type="button" class="tg-sheet-btn" data-psheet="diary" data-pid="' + p.id + '">📓 ' + (typeof I18n!=='undefined'?I18n.t('diary_title','Запис у щоденник'):'Запис у щоденник') + '</button>' +
+      '<button type="button" class="tg-sheet-btn" data-psheet="starter" data-pid="' + p.id + '">⭐ ' + (typeof I18n!=='undefined'?I18n.t('starter','Основа'):'Основа') + ' / ' + (typeof I18n!=='undefined'?I18n.t('reserve','Резерв'):'Резерв') + '</button>' +
+      '<button type="button" class="tg-sheet-btn tg-sheet-danger" data-psheet="delete" data-pid="' + p.id + '">🗑 ' + (typeof I18n!=='undefined'?I18n.t('sheet_delete','Видалити'):'Видалити') + '</button>' +
+      '<button type="button" class="tg-sheet-btn tg-sheet-cancel" data-psheet="close">' + (typeof I18n!=='undefined'?I18n.t('close','Закрити'):'Закрити') + '</button></div>';
     document.body.appendChild(backdrop);
     requestAnimationFrame(function() { backdrop.classList.add('show'); });
     const close = function() { backdrop.classList.remove('show'); setTimeout(function() { backdrop.remove(); }, 220); };
@@ -1500,7 +1504,7 @@ const App = {
       '<button type="button" class="tg-sheet-btn" data-ssheet="training" data-bid="' + b.id + '">📋 Прикріпити до тренування</button>' +
       '<button type="button" class="tg-sheet-btn" data-ssheet="player" data-bid="' + b.id + '">👤 Прикріпити до гравця</button>' +
       '<button type="button" class="tg-sheet-btn" data-ssheet="diary" data-bid="' + b.id + '">📓 Прикріпити до щоденника</button>' +
-      '<button type="button" class="tg-sheet-btn tg-sheet-danger" data-ssheet="delete" data-bid="' + b.id + '">🗑 Видалити</button>' +
+      '<button type="button" class="tg-sheet-btn tg-sheet-danger" data-ssheet="delete" data-bid="' + b.id + '">🗑 ' + (typeof I18n!=='undefined'?I18n.t('sheet_delete','Видалити'):'Видалити') + '</button>' +
       '<button type="button" class="tg-sheet-btn tg-sheet-cancel" data-ssheet="close">Закрити</button></div>';
     document.body.appendChild(backdrop);
     requestAnimationFrame(function() { backdrop.classList.add('show'); });
@@ -1609,7 +1613,7 @@ const App = {
       '<div class="tg-sheet-title">' + tname + '</div>' +
       '<div class="tg-sheet-sub">' + (t.date || '') + ' ' + (t.time || '') + ' · ' + (t.duration || 0) + ' хв · RPE ' + (t.intensity || '—') + '</div>' +
       '<div class="tg-sheet-preview">' + goal + blocks + '</div>' +
-      '<button type="button" class="tg-sheet-btn" data-nsheet="edit" data-tid="' + t.id + '">✏️ Редагувати</button>' +
+      '<button type="button" class="tg-sheet-btn" data-nsheet="edit" data-tid="' + t.id + '">✏️ ' + (typeof I18n!=='undefined'?I18n.t('sheet_edit','Редагувати'):'Редагувати') + '</button>' +
       '<button type="button" class="tg-sheet-btn" data-nsheet="share" data-tid="' + t.id + '">📤 Поділитися планом</button>' +
       '<button type="button" class="tg-sheet-btn" data-nsheet="board" data-tid="' + t.id + '">⚽ Дошка</button>' +
       '<button type="button" class="tg-sheet-btn tg-sheet-cancel" data-nsheet="close">Закрити</button></div>';
@@ -1761,13 +1765,23 @@ const App = {
       }
       if (t.dataset.tool) {
         const ab = Store.get().activeBoard;
+        if (!ab) return;
         ab.tool = t.dataset.tool;
-        // Лоток НЕ закриваємо автоматично — тренер сам згортає ⊕
-        // (раніше на <900px лоток миттєво закривався → здавалося, що «не розгортається»)
-        BoardEngine.renderToolbar();
+        // Після вибору інструмента з лотка — ховаємо панель (як у сучасних editor UX)
+        ab.toolsTrayOpen = false;
+        ab.paletteOpen = false;
+        try { document.body.classList.remove('tools-tray-open'); } catch (_) {}
         try {
-          document.body.classList.toggle('tools-tray-open', !!ab.toolsTrayOpen);
+          if (typeof BoardEngine !== 'undefined' && BoardEngine.closeToolsTray) {
+            BoardEngine.closeToolsTray(true);
+          }
         } catch (_) {}
+        try { BoardEngine.renderToolbar(); } catch (_) {}
+        const tray = document.getElementById('btbToolsTray');
+        if (tray) {
+          tray.classList.remove('open');
+          tray.setAttribute('aria-hidden', 'true');
+        }
         try { TelegramManager.haptic && TelegramManager.haptic('selection'); } catch (_) {}
         return;
       }
@@ -1918,7 +1932,19 @@ const App = {
         return;
       }
 
-      if (action === 'save-settings') return Actions.saveSettings();
+      
+    if (action === 'set-lang') {
+      e.preventDefault(); e.stopPropagation();
+      const code = t.getAttribute('data-lang') || 'uk';
+      if (typeof I18n !== 'undefined' && I18n.setLang) {
+        I18n.setLang(code);
+        if (typeof Toast !== 'undefined') Toast.show((code === 'de' ? 'Deutsch' : 'Українська') + ' ✓', 'ok');
+        try { TelegramManager.haptic && TelegramManager.haptic('light'); } catch (_) {}
+      }
+      return;
+    }
+
+    if (action === 'save-settings') return Actions.saveSettings();
       if (action === 'save-rbac') {
         const coachesRaw = (document.getElementById('setCoaches')?.value || '').split(',').map(x => x.trim()).filter(Boolean);
         let links = {};
@@ -2113,9 +2139,9 @@ const App = {
         const g = (s.gifts || []).find(x => x.id === uid);
         if (!g) return;
         const rar = (typeof CoachTools !== 'undefined' && CoachTools.RARITY_LABEL && CoachTools.RARITY_LABEL[g.rarity]) || g.rarity || '';
-        const isHoloEmblem = g.special === 'metalist-holo-emblem' || g.giftId === 'metalist_holo_emblem';
         const isNeural = g.special === 'neural-horse' || g.giftId === 'neural_horse_tester';
         const isGolden = g.special === 'golden-ball' || g.giftId === 'tyshchenko_first_golden_ball';
+        const isCrest = g.special === 'crest-seal' || g.giftId === 'grok_crest_seal_2025';
         const isCoach = typeof AuthManager !== 'undefined' && AuthManager.isCoach && AuthManager.isCoach();
         const attached = g.attached !== false;
         let coachBtns = '';
@@ -2127,14 +2153,14 @@ const App = {
               (attached ? '📎 Зняти з профілю' : '📌 На профіль') + '</button>' +
             (g.playerId ? ('<button type="button" class="btn btn-s btn-sm" data-action="set-featured-gift" data-player-id="' +
               g.playerId + '" data-gift-uid="' + uid + '">⭐ Біля імені</button>') : '') +
-            '<button type="button" class="btn btn-s btn-sm btn-danger" data-action="delete-gift" data-gift-uid="' + uid + '">🗑 Видалити</button>' +
+            '<button type="button" class="btn btn-s btn-sm btn-danger" data-action="delete-gift" data-gift-uid="' + uid + '">🗑 ' + (typeof I18n!=='undefined'?I18n.t('sheet_delete','Видалити'):'Видалити') + '</button>' +
             '</div>';
         }
-        const html = '<div class="artifact-inspect' + (isNeural ? ' neural-inspect' : '') + (isGolden ? ' golden-inspect' : '') + (isHoloEmblem ? ' holo-emblem-inspect' : '') + '">' +
+        const html = '<div class="artifact-inspect' + (isNeural ? ' neural-inspect' : '') + (isGolden ? ' golden-inspect' : '') + (isCrest ? ' crest-inspect' : '') + '">' +
           '<div class="artifact-inspect-stage">' +
-          (isHoloEmblem && typeof MetalistHoloEmblem !== 'undefined' ? MetalistHoloEmblem.inspectMarkup() : '<div class="artifact-hologram' + (isNeural ? ' art-neural-horse' : (isGolden ? ' art-golden-ball' : '')) + '" style="--art-hue:' + (g.hue != null ? g.hue : 42) + '">' +
+          '<div class="artifact-hologram' + (isNeural ? ' art-neural-horse' : (isGolden ? ' art-golden-ball' : (isCrest ? ' art-crest-seal' : ''))) + '" style="--art-hue:' + (g.hue != null ? g.hue : 42) + '">' +
           '<span class="nft-art-core"></span><span class="nft-art-ico" style="font-size:48px">' + (g.ico || '★') + '</span>' +
-          '<span class="nft-art-wave"></span></div>') + '</div>' +
+          '<span class="nft-art-wave"></span></div></div>' +
           '<div class="artifact-inspect-meta">' +
           '<div class="artifact-title">' + (typeof sanitize === 'function' ? sanitize(g.label) : g.label) + '</div>' +
           '<div class="artifact-rar rarity-' + (g.rarity || 'common') + '">' + rar + (g.serial ? (' · ' + g.serial) : '') +
@@ -2830,3 +2856,15 @@ const App = {
 };
 
 /* ─── ACTIONS ───────────────────────────────────────────── */
+;try {
+  const _origRender = App.renderCurrent && App.renderCurrent.bind(App);
+  if (_origRender && !App._clubBotWrapped) {
+    App._clubBotWrapped = true;
+    App.renderCurrent = function () {
+      const r = _origRender.apply(this, arguments);
+      try { if (typeof CoachTools !== 'undefined' && CoachTools.bindClubBot) CoachTools.bindClubBot(document); } catch (_) {}
+      try { if (typeof ClubBot !== 'undefined' && ClubBot.autoPollEnabled && ClubBot.autoPollEnabled()) ClubBot.startScheduler(); } catch (_) {}
+      return r;
+    };
+  }
+} catch (_) {}

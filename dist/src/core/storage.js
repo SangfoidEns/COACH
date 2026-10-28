@@ -409,6 +409,115 @@ const StorageManager = {
     };
   },
 
+
+  /**
+   * Локальна міграція через Telegram:
+   * зіставляє гравців (telegramUsername) із Telegram-акаунтом,
+   * зберігає snapshot складу для імпорту гравцями, пушить у Cloud.
+   */
+  async migrateRegisteredPlayers() {
+    const s = Store.get();
+    if (!s || !Array.isArray(s.players)) return { linked: 0, total: 0 };
+    let linked = 0;
+    const tgUser = (typeof AuthManager !== 'undefined' && AuthManager.user) ? AuthManager.user() : null;
+    const myUser = (tgUser && (tgUser.username || '')).replace(/^@/, '').toLowerCase();
+
+    s.players.forEach(p => {
+      if (!p) return;
+      let u = (p.telegramUsername || p.telegram || p.tg || '').toString().replace(/^@/, '').trim();
+      if (u) {
+        p.telegramUsername = u;
+        linked++;
+      }
+      // якщо поточний Telegram-користувач збігається з ніком у анкеті — позначити привʼязку
+      if (myUser && u && myUser === u.toLowerCase()) {
+        p.linkedTelegramId = tgUser.id || p.linkedTelegramId;
+        p.linkedAt = new Date().toISOString();
+      }
+    });
+
+    // ПОВНИЙ snapshot усіх даних клубу для передачі гравцям / між пристроями
+    const fullPack = {
+      type: 'metalist_full_migration',
+      schemaVersion: s.schemaVersion || 2,
+      updatedAt: new Date().toISOString(),
+      club: (s.settings && s.settings.clubName) || 'МЕТАЛІСТ ШТУТГАРТ',
+      // повний стан (без UI-ефемерного, якщо є)
+      players: JSON.parse(JSON.stringify(s.players || [])),
+      trainings: JSON.parse(JSON.stringify(s.trainings || [])),
+      matches: JSON.parse(JSON.stringify(s.matches || [])),
+      boards: JSON.parse(JSON.stringify(s.boards || [])),
+      schemes: JSON.parse(JSON.stringify(s.schemes || [])),
+      diary: JSON.parse(JSON.stringify(s.diary || [])),
+      gifts: JSON.parse(JSON.stringify(s.gifts || [])),
+      exercises: JSON.parse(JSON.stringify(s.exercises || [])),
+      myExercises: JSON.parse(JSON.stringify(s.myExercises || [])),
+      animations: JSON.parse(JSON.stringify(s.animations || [])),
+      activeBoard: JSON.parse(JSON.stringify(s.activeBoard || null)),
+      settings: JSON.parse(JSON.stringify(s.settings || {})),
+      coachStats: JSON.parse(JSON.stringify(s.coachStats || {})),
+      media: JSON.parse(JSON.stringify(s.media || [])),
+      // зворотна сумісність зі старим типом
+      legacyType: 'metalist_roster_migration'
+    };
+    try {
+      localStorage.setItem('metalist_full_migration', JSON.stringify(fullPack));
+      localStorage.setItem('metalist_roster_migration', JSON.stringify(fullPack));
+    } catch (e) {
+      console.warn('[migrate] local snapshot (maybe quota)', e);
+      // fallback: без фото base64 у players
+      try {
+        const slim = JSON.parse(JSON.stringify(fullPack));
+        (slim.players || []).forEach(p => { if (p && p.photoUrl && String(p.photoUrl).length > 500) p.photoUrl = ''; });
+        if (slim.settings) { slim.settings.logoData = ''; slim.settings.coachPhoto = ''; }
+        localStorage.setItem('metalist_full_migration', JSON.stringify(slim));
+        fullPack._slimmed = true;
+      } catch (e2) { console.warn('[migrate] slim failed', e2); }
+    }
+    try {
+      if (this.pushToCloud) await this.pushToCloud();
+    } catch (e) {
+      console.warn('[migrate] cloud', e);
+    }
+    try { this.save && this.save(); } catch (_) {}
+    return { linked, total: s.players.length, pack: fullPack };
+  },
+
+  /** Гравець: підхопити локальний snapshot міграції від тренера (той самий пристрій / імпорт) */
+  applyRosterMigrationIfAny() {
+    try {
+      const raw = localStorage.getItem('metalist_roster_migration');
+      if (!raw) return false;
+      const pack = JSON.parse(raw);
+      if (!pack || pack.type !== 'metalist_roster_migration') return false;
+      const s = Store.get();
+      if (!s) return false;
+      const byTg = {};
+      (pack.players || []).forEach(p => {
+        const u = (p.telegramUsername || '').toLowerCase();
+        if (u) byTg[u] = p;
+      });
+      const tgUser = (typeof AuthManager !== 'undefined' && AuthManager.user) ? AuthManager.user() : null;
+      const my = tgUser && (tgUser.username || '').replace(/^@/, '').toLowerCase();
+      if (my && byTg[my]) {
+        // оновити власний запис у складі
+        const me = (s.players || []).find(p => (p.telegramUsername || '').toLowerCase() === my);
+        if (me) {
+          Object.assign(me, byTg[my], { id: me.id });
+        }
+      }
+      // м'який merge тренувань/відвідувань якщо локально порожньо
+      if ((!s.trainings || !s.trainings.length) && pack.trainings && pack.trainings.length) {
+        s.trainings = pack.trainings;
+      }
+      this.save && this.save();
+      return true;
+    } catch (e) {
+      console.warn('[applyRosterMigration]', e);
+      return false;
+    }
+  },
+
   async exportJSON() {
     this.beginIoLock(3000);
     try {
@@ -699,6 +808,133 @@ const StorageManager = {
       try {
         const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
         if (!data || typeof data !== 'object') throw new Error('Невірний формат JSON');
+
+        // ── Повна міграція всіх даних від тренера ──
+        if (data.type === 'metalist_full_migration' || data.type === 'metalist_roster_migration') {
+          this.createBackup();
+          const s = Store.get() || {};
+          const isFull = data.type === 'metalist_full_migration' || data.players && data.boards;
+
+          const mergeById = (localArr, remoteArr, idKey) => {
+            idKey = idKey || 'id';
+            if (!Array.isArray(remoteArr)) return Array.isArray(localArr) ? localArr : [];
+            const map = {};
+            (localArr || []).forEach(x => { if (x && x[idKey] != null) map[x[idKey]] = x; });
+            remoteArr.forEach(src => {
+              if (!src || src[idKey] == null) return;
+              if (map[src[idKey]]) {
+                Object.assign(map[src[idKey]], src);
+              } else {
+                map[src[idKey]] = src;
+              }
+            });
+            return Object.keys(map).map(k => map[k]);
+          };
+
+          s.players = mergeById(s.players, data.players);
+          s.trainings = mergeById(s.trainings, data.trainings);
+          if (data.matches) s.matches = mergeById(s.matches, data.matches);
+          if (data.boards) s.boards = mergeById(s.boards, data.boards);
+          if (data.schemes) s.schemes = mergeById(s.schemes, data.schemes);
+          if (data.diary) s.diary = mergeById(s.diary, data.diary);
+          if (data.gifts) s.gifts = mergeById(s.gifts, data.gifts);
+          if (data.exercises) s.exercises = mergeById(s.exercises, data.exercises);
+          if (data.myExercises) s.myExercises = mergeById(s.myExercises, data.myExercises);
+          if (data.animations) s.animations = mergeById(s.animations, data.animations);
+          if (data.media) s.media = mergeById(s.media, data.media);
+          if (data.activeBoard && data.activeBoard.objects) {
+            // не затираємо поточну роботу на дошці, якщо локально вже є об'єкти
+            if (!s.activeBoard || !(s.activeBoard.objects || []).length) {
+              s.activeBoard = data.activeBoard;
+            }
+          }
+          if (data.settings && typeof data.settings === 'object') {
+            s.settings = Object.assign({}, s.settings || {}, data.settings);
+          }
+          if (data.coachStats) s.coachStats = Object.assign({}, s.coachStats || {}, data.coachStats);
+          if (data.club && s.settings) s.settings.clubName = s.settings.clubName || data.club;
+
+          try {
+            localStorage.setItem('metalist_full_migration', JSON.stringify(data));
+            localStorage.setItem('metalist_roster_migration', JSON.stringify(data));
+          } catch (_) {}
+
+          Store.set(s);
+          this.save();
+          try { if (typeof AuthManager !== 'undefined') AuthManager.afterDataImport(); } catch (_) {}
+          try { if (typeof CoachTools !== 'undefined' && CoachTools.loadCustomArtifacts) CoachTools.loadCustomArtifacts(); } catch (_) {}
+          try { App.applyBranding && App.applyBranding(); } catch (_) {}
+          try { App.renderCurrent(); } catch (_) {}
+          try { App.updateHeader && App.updateHeader(); } catch (_) {}
+
+          // якщо поточний користувач отримав нові подарунки — святкова анімація
+          try {
+            if (typeof GiftFX !== 'undefined' && GiftFX.celebrateRecent) GiftFX.celebrateRecent();
+          } catch (_) {}
+
+          const nP = (data.players || []).length;
+          const nT = (data.trainings || []).length;
+          const nB = (data.boards || []).length;
+          const nG = (data.gifts || []).length;
+          Toast.show('Повний імпорт: ' + nP + ' гравців · ' + nT + ' тренувань · ' + nB + ' схем · ' + nG + ' подарунків', 'ok');
+          return true;
+        }
+
+        // legacy guard (should not reach)
+        if (false && data.type === 'metalist_roster_migration') {
+          this.createBackup();
+          const s = Store.get() || {};
+          if (!Array.isArray(s.players)) s.players = [];
+          if (!Array.isArray(s.trainings)) s.trainings = [];
+          const byId = {};
+          const byTg = {};
+          s.players.forEach(p => {
+            if (p && p.id) byId[p.id] = p;
+            const u = (p.telegramUsername || '').toLowerCase();
+            if (u) byTg[u] = p;
+          });
+          let added = 0, updated = 0;
+          (data.players || []).forEach(src => {
+            if (!src) return;
+            const u = (src.telegramUsername || '').toLowerCase();
+            let dst = (src.id && byId[src.id]) || (u && byTg[u]) || null;
+            if (dst) {
+              Object.keys(src).forEach(k => {
+                if (src[k] != null && src[k] !== '') dst[k] = src[k];
+              });
+              updated++;
+            } else {
+              if (!src.id) src.id = 'p_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+              s.players.push(src);
+              added++;
+            }
+          });
+          // merge trainings by id (attendance preserved)
+          const trById = {};
+          s.trainings.forEach(t => { if (t && t.id) trById[t.id] = t; });
+          (data.trainings || []).forEach(src => {
+            if (!src || !src.id) return;
+            if (trById[src.id]) {
+              const dst = trById[src.id];
+              if (src.attendance) dst.attendance = Object.assign({}, dst.attendance || {}, src.attendance);
+              if (src.status) dst.status = src.status;
+              if (src.duration != null) dst.duration = src.duration;
+              if (src.intensity != null) dst.intensity = src.intensity;
+            } else {
+              s.trainings.push(src);
+            }
+          });
+          if (data.club && s.settings) s.settings.clubName = s.settings.clubName || data.club;
+          try { localStorage.setItem('metalist_roster_migration', JSON.stringify(data)); } catch (_) {}
+          Store.set(s);
+          this.save();
+          try { if (typeof AuthManager !== 'undefined') AuthManager.afterDataImport(); } catch (_) {}
+          try { App.renderCurrent(); } catch (_) {}
+          try { App.updateHeader && App.updateHeader(); } catch (_) {}
+          Toast.show('Міграція складу: +' + added + ' / оновлено ' + updated, 'ok');
+          return true;
+        }
+
         // мінімальна валідація структури експорту
         if (!data.players && !data.activeBoard && !data.schemaVersion && !data.trainings && !data.boards && !data.schemes) {
           throw new Error('Некоректний формат JSON файлу');
